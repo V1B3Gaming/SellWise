@@ -50,6 +50,9 @@ public sealed class Configuration : IPluginConfiguration
     /// <summary>For job quest items: go to the quest giver before crafting, so they can be handed straight in.</summary>
     public bool CraftAtQuestGiver { get; set; } = true;
 
+    /// <summary>Jobs auto questing works through (0-7 crafters, 8 MIN, 9 BTN, 10 FSH).</summary>
+    public HashSet<int> AutoQuestJobs { get; set; } = [];
+
     /// <summary>Scrip exchange items you're saving for, per character (content ID → item ID → how many).</summary>
     public Dictionary<ulong, Dictionary<uint, int>> ScripGoals { get; set; } = [];
 

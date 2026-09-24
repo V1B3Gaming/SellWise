@@ -28,7 +28,7 @@ public sealed class JobStatusWindow : Window
         this.plugin = plugin;
     }
 
-    public override bool DrawConditions() => plugin.Crafter.Job != null || plugin.Hunter.HasResult || plugin.Runner.IsBusy || plugin.Runner.Failed;
+    public override bool DrawConditions() => plugin.Crafter.Job != null || plugin.Hunter.HasResult || plugin.Runner.IsBusy || plugin.Runner.Failed || plugin.AutoQuests.IsBusy;
 
     public override void PreDraw() => theme = Theme.Push();
 
@@ -41,6 +41,18 @@ public sealed class JobStatusWindow : Window
     public override void Draw()
     {
         using var layout = Theme.PushLayout();
+        if (plugin.AutoQuests.IsBusy)
+        {
+            var auto = plugin.AutoQuests;
+            ImGui.Dummy(new Vector2(Width, 0));
+            ImGui.TextColored(Theme.Current.Color, "Auto quests");
+            ImGui.SameLine(Width - 40);
+            if (ImGui.SmallButton("Stop##autoall")) auto.Stop();
+            Theme.Wrapped(auto.Status, Theme.Text2);
+            if (auto.Completed.Count > 0) Theme.Muted($"Done so far: {string.Join(", ", auto.Completed)}");
+            ImGui.Separator();
+            if (plugin.Crafter.Job == null && !plugin.Hunter.HasResult && !plugin.Runner.IsBusy) return;
+        }
         if (plugin.Crafter.Job is not { } job)
         {
             if (plugin.Hunter.HasResult) DrawHunt();

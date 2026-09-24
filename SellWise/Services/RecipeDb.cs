@@ -121,6 +121,7 @@ public sealed class RecipeDb
         static int Minutes(int hhmm) => hhmm / 100 * 60 + hhmm % 100;
 
         var found = new Dictionary<uint, (bool Regular, int Level, HashSet<SpawnWindow> Windows)>();
+        var jobs = new Dictionary<uint, int>();
         foreach (var node in data.GetExcelSheet<GatheringPointBase>())
         {
             if (!pointsByBase.TryGetValue(node.RowId, out var pointIds)) continue;
@@ -153,13 +154,15 @@ public sealed class RecipeDb
                 var prev = found.TryGetValue(itemId, out var p) ? p : (false, int.MaxValue, new HashSet<SpawnWindow>());
                 prev.Item3.UnionWith(windows);
                 found[itemId] = (prev.Item1 || anyRegular, Math.Min(prev.Item2, node.GatheringLevel), prev.Item3);
+                // Mining and quarrying are Miner's, logging and harvesting Botanist's.
+                if (node.GatheringType.RowId <= 3) jobs.TryAdd(itemId, node.GatheringType.RowId <= 1 ? 8 : 9);
             }
         }
 
         return found.ToDictionary(
             kv => kv.Key,
             kv => new GatherInfo(kv.Key, kv.Value.Regular ? NodeKind.Regular : NodeKind.Timed, kv.Value.Level,
-                kv.Value.Regular ? [] : kv.Value.Windows.OrderBy(w => w.StartMinute).ToList()));
+                kv.Value.Regular ? [] : kv.Value.Windows.OrderBy(w => w.StartMinute).ToList(), jobs.GetValueOrDefault(kv.Key, -1)));
     }
 
     private const uint ParamCraftsmanship = 70, ParamControl = 71, ParamCP = 11;

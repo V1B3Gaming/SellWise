@@ -92,6 +92,18 @@ The Craft section's third tab, **Job quests**, is for crafter and gatherer quest
 - **Making it:** **Make** crafts one item, **Make all** does everything the quest still needs, and **Make everything** at the top does it for every quest you can do now. With more than one item, SellWise gathers (and hunts) for all of them first and doesn't craft anything until every item's materials are in your bags, then Artisan crafts them one after another. Materials two items share are topped up before crafting starts. Items you only gather have a **Gather** button that sends you to the node with GatherBuddy.
 - **Crafting at the quest giver:** once the gathering's done, SellWise takes you to the quest giver before Artisan crafts, so you can hand the items straight in. It teleports to the zone's aetheryte, or for givers off the main aetheryte (Old Gridania, the Steps of Thal, the Upper Decks, the Pillars) teleports to the city and takes the aethernet with [Lifestream](https://github.com/NightmareXIV/Lifestream), then walks the rest with vnavmesh. Turn it off with "Craft next to the quest giver" on the quest.
 
+### Auto quests
+
+At the top of the Job quests tab, pick the jobs you want to level through and press **Start**. For each job quest you can take (lowest level first), SellWise:
+
+1. gets the items ready: hunts monster drops, gathers, and crafts the hand-ins with Artisan (going for max quality),
+2. hands the quest to [Questionable](https://github.com/PunishXIV/Questionable), which walks, talks, accepts it and turns it in (it gathers the items for Miner, Botanist and Fisher quests with its own routes, and buys anything an NPC sells),
+3. moves on to the next quest.
+
+When there's nothing left you can take, it lists what to do to reach the next quest's level: recipes at your level with the cheapest materials (with a **Make 10** button) for crafters, always-up nodes at your level for Miner and Botanist. Questionable has routes for every crafter, Miner and Botanist job quest (they go up to level 70) and most Fisher quests.
+
+If a step can't be done (Questionable stops partway, something can't be gathered or hunted), it stops and says where, rather than carrying on.
+
 ### Hunting mob drops
 
 Some materials only drop from monsters, like the Boar Hide and Diremite Web in a Wrapped Crowsbeak Hammer. **Gather + craft**, **Gather only**, **Make** and **Make everything** hunt those first on their own, then carry on with the gathering and crafting; if a hunt can't be done, nothing is started, so GatherBuddy isn't left stuck on a missing hide. You can also hunt one material by itself: wherever SellWise lists materials (Craft for profit, Any recipe, Scrips, Job quests), those get a **Hunt** button. Hover it to see which monsters drop the item and where; the drop data comes from [Garland Tools](https://www.garlandtools.org), since the game files don't include drop tables.
@@ -161,6 +173,7 @@ SellWise doesn't buy anything at the scrip exchange. You do the buying; it keeps
 **Nice to have** (SellWise works without these; the buttons that need them just stay greyed out)
 - [vnavmesh](https://github.com/awgil/ffxiv_navmesh): walking to summoning bells, menders, collectable appraisers and quest givers
 - [GatherBuddy Reborn](https://github.com/FFXIV-CombatReborn/GatherBuddyReborn): Gather + craft, the per-material Gather buttons, and potions/food while gathering (turned on in its own settings)
+- [Questionable](https://github.com/PunishXIV/Questionable): auto questing (accepting, walking, talking and turning in job quests)
 - [Lifestream](https://github.com/NightmareXIV/Lifestream): the aethernet hop to job quest givers in Old Gridania, the Steps of Thal, the Upper Decks and the Pillars
 - [Artisan](https://github.com/PunishXIV/Artisan): Craft with Artisan
 - [WrathCombo](https://github.com/PunishXIV/WrathCombo) or [RotationSolver Reborn](https://github.com/FFXIV-CombatReborn/RotationSolverReborn): the fighting when you hunt mob drops (SellWise never fights on its own)

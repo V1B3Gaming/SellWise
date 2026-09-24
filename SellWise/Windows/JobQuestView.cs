@@ -27,6 +27,7 @@ public sealed class JobQuestView
     private int show;
     private uint selectedQuest;
     private string? startError;
+    private string? autoError;
     private readonly Dictionary<(uint Quest, uint Item), int> quantities = [];
 
     public JobQuestView(Plugin plugin, CraftView craftView)
@@ -65,6 +66,8 @@ public sealed class JobQuestView
         if (!right) return;
         if (plugin.Crafter.Job is { } running)
             DrawRunningBanner(running);
+        if (!plugin.AutoQuests.IsBusy && plugin.AutoQuests.Tips.Count > 0)
+            DrawTips();
         if (selected == null)
         {
             Theme.Wrapped(show == 0 ? "No job quests need items right now. Level up, or show everything not done." : "Nothing matches.", Theme.Text3);
@@ -100,6 +103,8 @@ public sealed class JobQuestView
     {
         using (Theme.HeadingFont()) ImGui.TextUnformatted("Job quests");
         Theme.Wrapped("Crafter and gatherer quests that need items handed in, and whether you can take them yet.", Theme.Text3);
+        DrawAutoPanel();
+        ImGui.Spacing();
 
         ImGui.SetNextItemWidth(110);
         using (var combo = ImRaii.Combo("##qjob", job < 0 ? "All jobs" : JobQuestDb.JobNames[job]))
@@ -145,6 +150,109 @@ public sealed class JobQuestView
         }
     }
 
+    /// <summary>Auto questing: pick jobs, start, and see what it's doing.</summary>
+    private void DrawAutoPanel()
+    {
+        var auto = plugin.AutoQuests;
+        var picked = Config.AutoQuestJobs;
+        ImGui.AlignTextToFramePadding();
+        Theme.Secondary("Auto quests");
+        ImGui.SameLine();
+        var label = picked.Count == 0 ? "Pick jobs" : string.Join(", ", picked.OrderBy(j => j).Select(j => JobQuestDb.JobNames[j]));
+        ImGui.SetNextItemWidth(150);
+        using (var combo = ImRaii.Combo("##autojobs", Theme.Fit(label, 125)))
+        {
+            if (combo)
+            {
+                for (var i = 0; i < JobQuestDb.JobNames.Length; i++)
+                {
+                    var on = picked.Contains(i);
+                    var level = plugin.JobQuests.Levels[i];
+                    if (ImGui.Checkbox($"{JobQuestDb.JobNames[i]}  {(level > 0 ? $"lv {level}" : "-")}##aj{i}", ref on))
+                    {
+                        if (on) picked.Add(i);
+                        else picked.Remove(i);
+                        Config.Save();
+                    }
+                }
+            }
+        }
+        ImGui.SameLine();
+        if (auto.IsBusy)
+        {
+            if (ImGui.Button("Stop##auto")) auto.Stop();
+        }
+        else
+        {
+            using (ImRaii.Disabled(picked.Count == 0 || !QuestionableBridge.Available))
+            {
+                if (Theme.PrimaryButton("Start##auto"))
+                {
+                    autoError = auto.Start(picked);
+                    if (autoError == null) plugin.MinimizeToJob();
+                }
+            }
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                ImGui.SetTooltip(!QuestionableBridge.Available
+                    ? "Needs Questionable, which walks, talks, accepts and turns the quests in."
+                    : "For the jobs you picked: takes the next quest you can do, gets its items ready (hunting, gathering,\n" +
+                      "crafting with Artisan), has Questionable accept and turn it in, then moves on. When nothing's left\n" +
+                      "that you can take, it shows what to craft or gather to level up. Questionable's job quest routes\n" +
+                      "cover levels 1 to 70.");
+        }
+
+        var status = autoError ?? auto.Status;
+        if (status.Length > 0) Theme.Wrapped(status, autoError != null || auto.Failed ? Theme.Bad : Theme.Text3);
+        if (auto.Completed.Count > 0 && auto.IsBusy) Theme.Muted($"Done so far: {auto.Completed.Count}");
+    }
+
+    /// <summary>What to craft or gather to reach the next quest's level.</summary>
+    private void DrawTips()
+    {
+        Theme.Secondary("Level up next");
+        ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - 50);
+        if (ImGui.SmallButton("Hide##tips")) plugin.AutoQuests.DismissTips();
+        var i = 0;
+        foreach (var group in plugin.AutoQuests.Tips.GroupBy(t => t.Headline))
+        {
+            ImGui.TextColored(Theme.Current.Color, Theme.Fit(group.Key, ImGui.GetContentRegionAvail().X));
+            foreach (var tip in group)
+            {
+                i++;
+                ImGui.AlignTextToFramePadding();
+                ImGui.TextUnformatted(Theme.Fit("  " + tip.Detail, ImGui.GetContentRegionAvail().X - 90));
+                if (tip.Craft is { } craft)
+                {
+                    ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - 80);
+                    using (ImRaii.Disabled(plugin.Crafter.IsRunning || plugin.Runner.IsBusy))
+                    {
+                        if (ImGui.SmallButton($"Make 10##tip{i}")) startError = MakeForLeveling(craft, 10);
+                    }
+                }
+                else if (tip.GatherItemId != 0)
+                {
+                    ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - 80);
+                    using (ImRaii.Disabled(!CraftCoordinator.VulcanAvailable))
+                    {
+                        if (ImGui.SmallButton($"Gather##tip{i}")) Plugin.CommandManager.ProcessCommand($"/gather {tip.GatherName}");
+                    }
+                }
+            }
+        }
+        ImGui.Separator();
+        ImGui.Spacing();
+    }
+
+    private string? MakeForLeveling(CraftOpportunity craft, int crafts)
+    {
+        var o = craftView.Priced(craft);
+        var plan = plugin.Scanner.VulcanPlan(o);
+        var finish = Config.FinishWithArtisan && CraftCoordinator.ArtisanAvailable;
+        return plugin.StartJob(o.Item.Name, [(plan, crafts)], () => CraftCoordinator.VulcanAvailable
+            ? plugin.Crafter.Start(o, crafts, CraftBackend.Vulcan, finish ? plan : null)
+            : plugin.Crafter.Start(o, crafts, CraftBackend.Artisan));
+    }
+
     private bool Row(JobQuest q, bool selected)
     {
         var width = ImGui.GetContentRegionAvail().X;
@@ -162,8 +270,8 @@ public sealed class JobQuestView
         }
 
         var (status, reason) = plugin.JobQuests.Status(q);
-        var first = q.Items.FirstOrDefault(i => !i.FromQuest) ?? q.Items[0];
-        var icon = plugin.Catalog.Get(first.ItemId)?.Icon ?? 0;
+        var first = q.Items.FirstOrDefault(i => !i.FromQuest) ?? q.Items.FirstOrDefault();
+        var icon = first != null ? plugin.Catalog.Get(first.ItemId)?.Icon ?? 0 : (ushort)0;
         var tex = Plugin.TextureProvider.GetFromGameIcon(new GameIconLookup(icon)).GetWrapOrEmpty();
         var dim = status is QuestStatus.Locked or QuestStatus.Done;
         dl.AddImage(tex.Handle, pos + new Vector2(8, 9), pos + new Vector2(48, 49), Vector2.Zero, Vector2.One, dim ? Theme.U32(new Vector4(1, 1, 1, 0.5f)) : uint.MaxValue);
@@ -173,7 +281,7 @@ public sealed class JobQuestView
         var ls = ImGui.CalcTextSize(label);
         dl.AddText(new Vector2(right - ls.X, pos.Y + 10), Theme.U32(color), label);
         var plans = plugin.JobQuests.Plan(q, World);
-        var itemsText = status == QuestStatus.Done ? "" : $"{plans.Count(p => p.Missing == 0 || p.Item.FromQuest)}/{plans.Count} items";
+        var itemsText = status == QuestStatus.Done || plans.Count == 0 ? "" : $"{plans.Count(p => p.Missing == 0 || p.Item.FromQuest)}/{plans.Count} items";
         var its = ImGui.CalcTextSize(itemsText);
         dl.AddText(new Vector2(right - its.X, pos.Y + 31), Theme.U32(Theme.Text3), itemsText);
 
@@ -211,6 +319,7 @@ public sealed class JobQuestView
 
         Theme.Secondary("Hand in");
         var plans = plugin.JobQuests.Plan(q, World);
+        if (plans.Count == 0) Theme.Muted("Nothing to hand in: talking, a trial or a duty.");
         var i = 0;
         foreach (var p in plans)
         {

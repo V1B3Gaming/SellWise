@@ -69,7 +69,7 @@ public sealed class JobRunner
     /// Returns an error, or null when it's under way. Must be called on the framework thread.
     /// </summary>
     public string? Start(string what, IReadOnlyList<(CraftOpportunity Plan, int Crafts)> plans, Func<string?> launch,
-        IReadOnlyList<QueuedJob>? gatherAllFirst = null)
+        IReadOnlyList<QueuedJob>? gatherAllFirst = null, IReadOnlyList<(uint ItemId, string Name, int Missing)>? alsoGet = null)
     {
         if (IsBusy) return "SellWise is already getting a job ready.";
         if (crafter.IsRunning) return "A craft job is already running.";
@@ -90,6 +90,8 @@ public sealed class JobRunner
         // NPC-sold items count too: GatherBuddy doesn't buy them in this pipeline.
         candidates = Shortfall().Where(x => x.Line.Source is MaterialSource.Buy or MaterialSource.Unknown or MaterialSource.Vendor)
             .Select(x => (x.Line.ItemId, x.Line.Name, x.Missing)).ToList();
+        // Things wanted directly (a quest hand-in that's itself a drop), not as a recipe's material.
+        if (alsoGet != null) candidates.AddRange(alsoGet.Where(a => a.Missing > 0 && candidates.All(c => c.ItemId != a.ItemId)));
         if (candidates.Count == 0)
         {
             AfterHunting();

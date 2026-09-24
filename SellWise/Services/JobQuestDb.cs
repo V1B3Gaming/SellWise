@@ -71,7 +71,8 @@ public sealed class JobQuestDb
                 .Where(id => items.GetRowOrDefault(id) is { } it && !it.Name.IsEmpty)
                 .Distinct()
                 .ToList();
-            if (itemIds.Count == 0) continue;
+            // Quests with nothing to hand in are kept too: auto questing walks the whole chain, and they're
+            // often the step before one that does want items.
 
             var texts = QuestTexts(q);
             var questItems = itemIds.Select(id =>
@@ -101,7 +102,7 @@ public sealed class JobQuestDb
         foreach (var q in quests.SelectMany(q => q.PreviousQuests).Distinct().Where(id => !names.ContainsKey(id)))
             names[q] = data.GetExcelSheet<Quest>().GetRowOrDefault(q)?.Name.ExtractText() ?? $"quest #{q}";
 
-        Plugin.Log.Information($"Job quests: {quests.Count} crafter/gatherer quests need items");
+        Plugin.Log.Information($"Job quests: {quests.Count} crafter/gatherer quests ({quests.Count(q => q.Items.Count > 0)} need items)");
         return new JobQuestDb(quests.OrderBy(q => q.JobIndex).ThenBy(q => q.Level).ToList(), names);
     }
 

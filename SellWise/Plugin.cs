@@ -56,6 +56,9 @@ public sealed class Plugin : IDalamudPlugin
     public CombatAssist Combat { get; }
     public MobHunter Hunter { get; }
     public JobRunner Runner { get; }
+    public QuestionableBridge Questionable { get; }
+    public LevelingAdvisor Leveling { get; }
+    public AutoQuester AutoQuests { get; }
 
     private readonly WindowSystem windows = new("SellWise");
     private readonly MainWindow mainWindow;
@@ -95,6 +98,9 @@ public sealed class Plugin : IDalamudPlugin
             TurnIn = new TurnInService(Teleporter, () => Scrips.Db);
             Scrips.EnsureLoaded();
             JobQuests = new JobQuestService(Scanner, Market, Tracker);
+            Questionable = new QuestionableBridge();
+            Leveling = new LevelingAdvisor(Scanner, Catalog);
+            AutoQuests = new AutoQuester(JobQuests, Runner, Crafter, Hunter, Questionable, Leveling, Scanner, Config, () => Advice.PricingWorld);
             Theme.SetAccent(Config.Accent);
             Theme.InitFonts(PluginInterface.UiBuilder);
             Crafter.Finished += OnCraftFinished;
@@ -187,6 +193,7 @@ public sealed class Plugin : IDalamudPlugin
             case "stop":
                 Repair.Stop();
                 TurnIn.Stop();
+                AutoQuests.Stop();
                 Runner.Stop();
                 Hunter.Stop();
                 Crafter.Stop();
@@ -229,6 +236,7 @@ public sealed class Plugin : IDalamudPlugin
         Travel.Update();
         Hunter.Update();
         Runner.Update();
+        AutoQuests.Update();
         Crafter.Update();
         TurnIn.Update();
         ScripTracker.Update();
@@ -249,7 +257,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnCraftFinished(CraftJob job)
     {
-        if (Runner.IsBusy) return; // part of a bigger job (gathering for several items): keep going
+        if (Runner.IsBusy || AutoQuests.IsBusy) return; // part of a bigger job: keep going
 
         if (Crafter.Queued > 0) return; // more queued: carry on without popping SellWise back up
 

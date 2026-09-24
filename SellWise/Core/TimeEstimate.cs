@@ -24,7 +24,8 @@ public readonly record struct SpawnWindow(int StartMinute, int DurationMinutes)
 }
 
 /// <summary>How an item is gathered, for time estimates.</summary>
-public sealed record GatherInfo(uint ItemId, NodeKind Kind, int Level, IReadOnlyList<SpawnWindow> Windows);
+/// <param name="JobIndex">Who gathers it: 8 Miner, 9 Botanist (same numbering as job quests), -1 unknown.</param>
+public sealed record GatherInfo(uint ItemId, NodeKind Kind, int Level, IReadOnlyList<SpawnWindow> Windows, int JobIndex = -1);
 
 public static class EorzeaTime
 {
