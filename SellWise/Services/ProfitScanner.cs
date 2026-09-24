@@ -44,6 +44,12 @@ public sealed class ProfitScanner : IDisposable
 
     public RecipeDb? Db => recipeDbTask is { IsCompletedSuccessfully: true } t ? t.Result : null;
 
+    /// <summary>Loads the recipe data (once) without scanning prices.</summary>
+    public Task<RecipeDb> LoadDb() => recipeDbTask ??= Task.Run(RecipeDb.Load);
+
+    /// <summary>A calculator with the current settings, for costing recipes outside a scan.</summary>
+    public ProfitCalculator? NewCalculator() => Db is { } db ? Calculator(db, config.Craft, config.Advisor, null) : null;
+
     /// <summary>Called on the framework thread.</summary>
     public void Start(string world)
     {
@@ -51,7 +57,7 @@ public sealed class ProfitScanner : IDisposable
         scanning = true;
         Status = "Loading recipes...";
 
-        recipeDbTask ??= Task.Run(RecipeDb.Load);
+        LoadDb();
 
         var craft = config.Craft;
         var adv = config.Advisor;
@@ -146,7 +152,8 @@ public sealed class ProfitScanner : IDisposable
     public CraftOpportunity Reprice(CraftOpportunity o, IReadOnlyDictionary<uint, MaterialSource> overrides)
     {
         if (overrides.Count == 0 || Db is not { } db) return o;
-        if (Calculator(db, config.Craft, config.Advisor, overrides).Evaluate(o.Recipe) is not { } priced) return o;
+        var calc = Calculator(db, config.Craft, config.Advisor, overrides);
+        if ((o.SalePrice > 0 ? calc.Evaluate(o.Recipe) : calc.Cost(o.Recipe)) is not { } priced) return o;
         priced.LockedReason = o.LockedReason;
         return priced;
     }
@@ -160,7 +167,8 @@ public sealed class ProfitScanner : IDisposable
         if (Db is not { } db) return o;
         var cs = config.Craft.Clone();
         cs.MaterialMode = MaterialMode.GatherAndCraft;
-        if (Calculator(db, cs, config.Advisor, null).Evaluate(o.Recipe) is not { } plan) return o;
+        var calc = Calculator(db, cs, config.Advisor, null);
+        if ((o.SalePrice > 0 ? calc.Evaluate(o.Recipe) : calc.Cost(o.Recipe)) is not { } plan) return o;
         plan.LockedReason = o.LockedReason;
         return plan;
     }
@@ -170,7 +178,7 @@ public sealed class ProfitScanner : IDisposable
         => Db is { } db ? Calculator(db, config.Craft, config.Advisor, null).Choices(itemId) : [];
 
     /// <summary>Reads job levels, master recipe books and quest completion. Must run on the framework thread.</summary>
-    private static unsafe RecipeUnlocks ReadUnlocks(RecipeDb db)
+    internal static unsafe RecipeUnlocks ReadUnlocks(RecipeDb db)
     {
         var levels = new int[8];
         var jobs = Plugin.DataManager.GetExcelSheet<ClassJob>();
@@ -204,7 +212,7 @@ public sealed class ProfitScanner : IDisposable
         };
     }
 
-    private static void CollectMaterials(RecipeInfo recipe, RecipeDb db, int depth, HashSet<uint> into)
+    internal static void CollectMaterials(RecipeInfo recipe, RecipeDb db, int depth, HashSet<uint> into)
     {
         foreach (var ing in recipe.Ingredients)
         {

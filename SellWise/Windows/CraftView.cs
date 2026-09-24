@@ -86,7 +86,7 @@ public sealed class CraftView
     }
 
     /// <summary>The recipe costed with any materials you've picked a different source for.</summary>
-    private CraftOpportunity Priced(CraftOpportunity o)
+    public CraftOpportunity Priced(CraftOpportunity o)
     {
         if (!picks.TryGetValue(o.Recipe.RecipeId, out var mine) || mine.Count == 0) return o;
         if (priced is { } p && ReferenceEquals(p.Base, o) && p.Version == picksVersion) return p.Priced;
@@ -326,7 +326,7 @@ public sealed class CraftView
         return list;
     }
 
-    private void DrawQualityCheck(CraftOpportunity o)
+    public void DrawQualityCheck(CraftOpportunity o)
     {
         var report = plugin.Quality.Get(o, plugin.Advice.PricingWorld);
         var width = ImGui.GetContentRegionAvail().X;
@@ -697,8 +697,17 @@ public sealed class CraftView
             MaterialCell(o.Item.Id, job.Wanted, stage == 3, Theme.Current.Color, job.Made, first: true);
         });
         Arrow(arrow, height);
-        StageCard("##st4", "4  Sell", stage, 4, widths[3], height, () =>
+        var collectable = plugin.Scrips.Db?.Collectables.GetValueOrDefault(o.Item.Id);
+        StageCard("##st4", collectable != null ? "4  Turn in" : "4  Sell", stage, 4, widths[3], height, () =>
         {
+            if (collectable != null)
+            {
+                using (Theme.BigFont()) ImGui.TextUnformatted($"{collectable.HighReward * job.Wanted:N0}");
+                Theme.Wrapped($"{Scrips.Short(collectable.Scrip)} scrips at the top tier", Theme.Text3);
+                Theme.Wrapped(plugin.TurnIn.Status.Length > 0 ? plugin.TurnIn.Status
+                    : Config.TurnInAfterScripJob ? "Turned in at the appraiser when the crafts land." : "Turn them in from the Scrips tab.", Theme.Text2);
+                return;
+            }
             var stacks = plugin.Advice.Plan.Stacks;
             var rec = stacks.FirstOrDefault(r => r.Item.Id == o.Item.Id && r.Hq == o.SellHq) ?? stacks.FirstOrDefault(r => r.Item.Id == o.Item.Id);
             if (job.State == CraftJobState.Finished && rec?.SuggestedPrice is { } price)

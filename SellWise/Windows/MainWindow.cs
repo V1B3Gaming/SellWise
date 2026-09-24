@@ -19,7 +19,7 @@ namespace SellWise.Windows;
 /// </summary>
 public sealed class MainWindow : Window
 {
-    private enum View { Sell, Listings, Craft, Retainers }
+    private enum View { Sell, Listings, Craft, Scrips, Retainers }
 
     private const float NavWidth = 90;
     private const float ListWidth = 430;
@@ -29,6 +29,7 @@ public sealed class MainWindow : Window
 
     private readonly Plugin plugin;
     private readonly CraftView craftView;
+    private readonly ScripView scripView;
     private IDisposable? theme;
     private IDisposable? edgeToEdge;
     private View view = View.Sell;
@@ -43,9 +44,10 @@ public sealed class MainWindow : Window
     {
         this.plugin = plugin;
         craftView = new CraftView(plugin);
+        scripView = new ScripView(plugin, craftView);
         Size = new Vector2(1180, 720);
         SizeCondition = ImGuiCond.FirstUseEver;
-        SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(900, 480), MaximumSize = new Vector2(float.MaxValue, float.MaxValue) };
+        SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(900, 560), MaximumSize = new Vector2(float.MaxValue, float.MaxValue) };
     }
 
     private Configuration Config => plugin.Config;
@@ -54,6 +56,12 @@ public sealed class MainWindow : Window
     {
         IsOpen = true;
         view = View.Craft;
+    }
+
+    public void ShowScripTab()
+    {
+        IsOpen = true;
+        view = View.Scrips;
     }
 
     public override void PreDraw()
@@ -94,6 +102,7 @@ public sealed class MainWindow : Window
             case View.Sell: DrawSell(); break;
             case View.Listings: DrawListings(); break;
             case View.Craft: craftView.Draw(); break;
+            case View.Scrips: scripView.Draw(); break;
             case View.Retainers: DrawRetainers(); break;
         }
     }
@@ -111,6 +120,7 @@ public sealed class MainWindow : Window
         NavItem(View.Sell, FontAwesomeIcon.Coins, "Sell", null);
         NavItem(View.Listings, FontAwesomeIcon.ListUl, "Listings", undercut > 0 ? undercut.ToString() : null);
         NavItem(View.Craft, FontAwesomeIcon.Hammer, "Craft", plugin.Crafter.IsRunning ? "•" : null);
+        NavItem(View.Scrips, FontAwesomeIcon.Scroll, "Scrips", plugin.TurnIn.IsBusy ? "•" : null);
         NavItem(View.Retainers, FontAwesomeIcon.Users, "Retainers", null);
 
         ImGui.SetCursorPos(new Vector2(7, height - 3 * 60 - 8));

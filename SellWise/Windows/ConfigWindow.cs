@@ -227,6 +227,8 @@ public sealed class ConfigWindow : Window
         changed |= Check("Use cordials while a craft job is gathering", c.UseCordials, v => c.UseCordials = v);
         changed |= Check("Let Artisan do the crafting after GatherBuddy gathers", c.FinishWithArtisan, v => c.FinishWithArtisan = v);
         Help("For max quality every craft. Once GatherBuddy has gathered everything, SellWise stops it (never mid-craft) and hands the parts and the item to Artisan. Needs Artisan installed.");
+        changed |= Check("Turn in scrip collectables when a scrip job finishes", c.TurnInAfterScripJob, v => c.TurnInAfterScripJob = v);
+        Help("Teleports to Solution Nine or Radz-at-Han and turns them in at the collectable appraiser. Stops before the scrip cap.");
         Help("Drinks the biggest cordial that won't waste GP whenever the cordial cooldown is ready, between nodes. GatherBuddy Reborn can do this too (auto-gather preset > Consumables); they share one cooldown, so both on is safe.");
 
         ImGui.Spacing();

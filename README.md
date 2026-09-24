@@ -73,6 +73,18 @@ When it's done, SellWise pulls a fresh price so you know what to list at.
 
 Once you press start, the main window tucks itself away and a small **SellWise progress** window takes over. It comes back by itself when the job's done (or if it fails), or whenever you click **Open SellWise**. While it's gathering, the progress window lists every material with a meter that fills as it lands in your bags, how long each will take (or when a timed node next spawns), and your GP. Once everything's gathered it switches to a crafting meter with time left, and when it's finished it shows the price to list at. Tick **Use cordials when ready** there and SellWise drinks the biggest cordial that won't waste GP whenever the cooldown's up, between nodes.
 
+## Scrips
+
+The **Scrips** tab is for farming purple and orange crafters' scrips.
+
+- **What to make:** every crafter collectable your job levels unlock, with the scrips its top tier pays, how many scrips an hour the crafting earns, and what the materials cost per scrip. SellWise simulates each craft with your saved stats and only lists the ones that reach the **top collectability tier**. If food or medicine would get you there, it says which.
+- **Making them:** **Gather + craft** has GatherBuddy gather the materials and Artisan craft the collectables, just like Craft for profit. **Craft with Artisan** works when the materials are already in your bags. The quantity box shows how many crafts fit before you hit the scrip cap.
+- **Turning in:** when the job's done (or whenever you press **Turn in**), SellWise teleports to Solution Nine or Radz-at-Han, walks to the collectable appraiser and turns in every crafter collectable in your bags. If the next one would take you over the scrip cap, it stops and tells you to spend some first.
+- **The scrip exchange:** a checklist of everything the purple and orange exchanges sell. Mounts, minions, orchestrion rolls and other unlocks show whether you've unlocked them. Gear and furniture show whether you have them anywhere (bags, armoury, retainers, glamour dresser, armoire). Materia and materials show how many you hold, how many you've bought (SellWise counts your purchases while the exchange is open), and what they're worth in gil per scrip on the market board.
+- **Goals:** tick what you're saving for and SellWise tells you how many more scrips that takes, and roughly how many crafts of your best collectable.
+
+SellWise doesn't buy anything at the scrip exchange. You do the buying; it keeps track.
+
 ## The little extras
 
 - **Repairs:** before a craft job starts (and between Artisan steps), SellWise checks your gear. If it's getting low, it repairs with Dark Matter if you can, or pops over to a city with a mender and gets it done there.
@@ -85,6 +97,8 @@ Once you press start, the main window tucks itself away and a small **SellWise p
 |---|---|
 | `/sw` | Open SellWise (`/sellwise` works too) |
 | `/sw craft` | Jump to Craft for profit |
+| `/sw scrips` | Jump to Scrips |
+| `/sw turnin` | Take your crafter collectables to an appraiser and turn them in |
 | `/sw refresh` | Refresh prices |
 | `/sw repair` | Repair your gear now |
 | `/sw city` | Teleport to a random major city |
@@ -124,7 +138,7 @@ dotnet test SellWise.Tests
 
 ## Worth knowing
 
-- SellWise only **suggests** prices. It never lists, buys or reprices anything on the market board.
+- SellWise only **suggests** prices. It never lists, buys or reprices anything on the market board, and it never buys from the scrip exchange.
 - The gathering and crafting are done by GatherBuddy Reborn and Artisan, so the same rules apply as when you use them on their own: stay at your keyboard.
 - The HQ check assumes normal-quality materials and no lucky conditions, so real crafts should do at least as well.
 - Letting Artisan do the crafting is on by default (Settings, "Let Artisan do the crafting after GatherBuddy gathers"). GatherBuddy has no plugin interface for stopping its queue, so SellWise uses its `/gatherdebug repairstop` command, which calls the same stop as its own Stop button; you'll see a debug line in chat when it does.
@@ -133,7 +147,7 @@ dotnet test SellWise.Tests
 
 ## Credits
 
-Market data from [Universalis](https://universalis.app). The crafting math follows the [Teamcraft simulator](https://github.com/ffxiv-teamcraft/simulator). FINAL FANTASY XIV © SQUARE ENIX CO., LTD. SellWise is a fan project and isn't affiliated with Square Enix.
+Market data from [Universalis](https://universalis.app). The crafting math follows the [Teamcraft simulator](https://github.com/ffxiv-teamcraft/simulator). The collectables turn-in follows how [GatherBuddy Reborn](https://github.com/FFXIV-CombatReborn/GatherBuddyReborn) drives the appraiser's window. FINAL FANTASY XIV © SQUARE ENIX CO., LTD. SellWise is a fan project and isn't affiliated with Square Enix.
 
 ## License
 

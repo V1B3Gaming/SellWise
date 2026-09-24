@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -200,6 +201,15 @@ public sealed class JobStatusWindow : Window
     private void DrawDone(CraftJob job)
     {
         var o = job.Opportunity;
+        if (plugin.Scrips.Db?.Collectables.GetValueOrDefault(o.Item.Id) is { } collectable)
+        {
+            ImGui.TextColored(Theme.Good, $"Made {job.Made} of {job.Wanted}.");
+            var turnIn = plugin.TurnIn;
+            if (turnIn.Status.Length > 0) Theme.Wrapped(turnIn.Status, turnIn.Failed ? Theme.Bad : Theme.Text2);
+            if (!turnIn.IsBusy && turnIn.InBags().Count > 0 && Theme.PrimaryButton("Turn in now")) turnIn.Start();
+            Theme.Muted($"Worth about {collectable.HighReward * job.Made:N0} {Scrips.Short(collectable.Scrip)} scrips at the top tier.");
+            return;
+        }
         var stacks = plugin.Advice.Plan.Stacks;
         var rec = stacks.FirstOrDefault(r => r.Item.Id == o.Item.Id && r.Hq == o.SellHq) ?? stacks.FirstOrDefault(r => r.Item.Id == o.Item.Id);
         ImGui.TextColored(Theme.Good, $"Made {job.Made} of {job.Wanted}.");

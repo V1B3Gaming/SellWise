@@ -62,16 +62,7 @@ public sealed class ProfitCalculator
         };
         if (salePrice is not { } sale || sale < cs.MinSalePrice) return null;
 
-        var lines = new List<MaterialLine>();
-        double value = 0, cash = 0;
-        var unknown = new List<string>();
-        foreach (var ing in recipe.Ingredients)
-        {
-            var r = Resolve(ing.ItemId, 1);
-            value += r.Value * ing.Amount;
-            cash += r.Cash * ing.Amount;
-            AddLines(lines, ing.ItemId, ing.Amount, r, 0, unknown);
-        }
+        var (lines, value, cash, warning) = Materials(recipe);
 
         var revenue = (double)SellAdvisor.NetUnit(sale, adv) * recipe.Yield;
         var profit = revenue - (cs.ValueGatheredAtMarket ? value : cash);
@@ -91,8 +82,47 @@ public sealed class ProfitCalculator
             DailyProfit = profit / yieldUnits * q.UnitsPerDay,
             SuggestedCrafts = (int)Math.Clamp(Math.Ceiling(q.UnitsPerDay * cs.DaysOfSupply / yieldUnits), 1, 99),
             Materials = lines,
-            Warning = unknown.Count > 0 ? $"No known source or price for: {string.Join(", ", unknown.Distinct())}. Costs may be understated." : null,
+            Warning = warning,
         };
+    }
+
+    /// <summary>
+    /// Just the material side of a recipe, for things that aren't sold on the market board (scrip collectables).
+    /// Sale price and profit are zero; profit per craft is minus the material cost.
+    /// </summary>
+    public CraftOpportunity? Cost(RecipeInfo recipe)
+    {
+        if (items(recipe.ResultItemId) is not { } item) return null;
+        var (lines, value, cash, warning) = Materials(recipe);
+        return new CraftOpportunity
+        {
+            Recipe = recipe,
+            Item = item,
+            MaterialValue = value,
+            CashCost = cash,
+            ProfitPerCraft = -(cs.ValueGatheredAtMarket ? value : cash),
+            CashProfitPerCraft = -cash,
+            SuggestedCrafts = 1,
+            Materials = lines,
+            Warning = warning,
+        };
+    }
+
+    private (List<MaterialLine> Lines, double Value, double Cash, string? Warning) Materials(RecipeInfo recipe)
+    {
+        var lines = new List<MaterialLine>();
+        double value = 0, cash = 0;
+        var unknown = new List<string>();
+        foreach (var ing in recipe.Ingredients)
+        {
+            var r = Resolve(ing.ItemId, 1);
+            value += r.Value * ing.Amount;
+            cash += r.Cash * ing.Amount;
+            AddLines(lines, ing.ItemId, ing.Amount, r, 0, unknown);
+        }
+
+        var warning = unknown.Count > 0 ? $"No known source or price for: {string.Join(", ", unknown.Distinct())}. Costs may be understated." : null;
+        return (lines, value, cash, warning);
     }
 
     private void AddLines(List<MaterialLine> lines, uint itemId, double amount, Resolved r, int depth, List<string> unknown)

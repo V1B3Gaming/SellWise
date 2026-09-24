@@ -79,6 +79,20 @@ public class ProfitCalculatorTests
     }
 
     [Fact]
+    public void CostsRecipesThatDontSell()
+    {
+        items[1] = items[1] with { Marketable = false, Tradable = false }; // a scrip collectable
+        Assert.Null(Calc().Evaluate(Sword));
+
+        var o = Calc().Cost(Sword)!;
+        Assert.Equal(0u, o.SalePrice);
+        Assert.Equal(690, o.MaterialValue);
+        Assert.Equal(40, o.CashCost);
+        Assert.Equal(-690, o.ProfitPerCraft);
+        Assert.Contains(o.Materials, m => m.ItemId == 2 && m.Source == MaterialSource.Craft);
+    }
+
+    [Fact]
     public void CostsIntermediatesByCheapestRoute()
     {
         // Crafting an ingot: 3 ore (gathered, worth 100 each) + 1 flux (vendor 20) = 320, far below buying at 900.

@@ -465,10 +465,22 @@ public sealed class CraftCoordinator
             .GroupBy(x => x.Line.ItemId)
             .Select(g => (g.First().Line, g.Sum(x => x.Need)));
 
+    /// <summary>Units in your bags, counting NQ, HQ and collectables alike.</summary>
     private static unsafe int CountResult(uint itemId)
     {
         var im = InventoryManager.Instance();
         if (im == null) return 0;
-        return im->GetInventoryItemCount(itemId, false, false, false, 0) + im->GetInventoryItemCount(itemId, true, false, false, 0);
+        var count = 0;
+        foreach (var type in new[] { InventoryType.Inventory1, InventoryType.Inventory2, InventoryType.Inventory3, InventoryType.Inventory4 })
+        {
+            var container = im->GetInventoryContainer(type);
+            if (container == null || !container->IsLoaded) continue;
+            for (var i = 0; i < container->Size; i++)
+            {
+                var slot = container->GetInventorySlot(i);
+                if (slot != null && slot->ItemId == itemId) count += slot->Quantity;
+            }
+        }
+        return count;
     }
 }

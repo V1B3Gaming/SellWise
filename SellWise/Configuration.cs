@@ -44,6 +44,15 @@ public sealed class Configuration : IPluginConfiguration
     /// </summary>
     public bool FinishWithArtisan { get; set; } = true;
 
+    /// <summary>After a scrip craft job, take the collectables to an appraiser and turn them in.</summary>
+    public bool TurnInAfterScripJob { get; set; } = true;
+
+    /// <summary>Scrip exchange items you're saving for, per character (content ID → item ID → how many).</summary>
+    public Dictionary<ulong, Dictionary<uint, int>> ScripGoals { get; set; } = [];
+
+    /// <summary>Scrip exchange purchases SellWise has seen, per character (content ID → item ID → how many bought).</summary>
+    public Dictionary<ulong, Dictionary<uint, int>> ScripPurchases { get; set; } = [];
+
     public HashSet<uint> IgnoredItems { get; set; } = [];
 
     public CraftSettings Craft { get; set; } = new();
