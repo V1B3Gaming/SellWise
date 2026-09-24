@@ -75,7 +75,7 @@ Once you press start, the main window tucks itself away and a small **SellWise p
 
 ### Any recipe
 
-The **Any recipe** tab is for just making something: search any recipe (sellable or not), set how many, and go.
+The **Any recipe** tab is for just making something: it lists every recipe (sellable or not; filter by job, unlocked only, or search), you set how many, and go.
 
 - **Gather + craft:** anything monster-only is hunted first, GatherBuddy gathers the rest, then Artisan crafts the parts and the item. What's already in your bags is used.
 - **Gather only:** GatherBuddy gathers everything the recipe needs and stops there, so you can craft it yourself later.

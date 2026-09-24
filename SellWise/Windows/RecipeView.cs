@@ -18,7 +18,6 @@ public sealed class RecipeView
 {
     private const float ListWidth = 430;
     private const float RowHeight = 46;
-    private const int MaxRows = 200;
 
     private readonly Plugin plugin;
     private readonly CraftView craftView;
@@ -79,7 +78,7 @@ public sealed class RecipeView
         if (plugin.Crafter.Job is { } running) DrawRunningBanner(running);
         if (selected == null)
         {
-            Theme.Wrapped("Search for anything you can craft. SellWise lists its materials, has GatherBuddy gather them and Artisan craft it.", Theme.Text3);
+            Theme.Wrapped("Pick a recipe on the left (or search). SellWise lists its materials, has GatherBuddy gather them and Artisan craft it.", Theme.Text3);
             return;
         }
         DrawDetail(selected, db);
@@ -92,18 +91,19 @@ public sealed class RecipeView
         return ImRaii.Child(id, size, false, ImGuiWindowFlags.AlwaysUseWindowPadding);
     }
 
+    /// <summary>Every recipe that passes the filters: highest level first, or best name match first when searching.</summary>
     private IEnumerable<RecipeInfo> Rows(RecipeDb db)
     {
-        if (search.Trim().Length < 2) return [];
         var term = search.Trim();
         return db.Recipes
             .Where(r => r.CraftType is >= 0 and < 8 && (job < 0 || r.CraftType == job))
             .Where(r => !unlockedOnly || unlocks?.IsUnlocked(r) != false)
             .Select(r => (Recipe: r, Name: plugin.Catalog.Get(r.ResultItemId)?.Name ?? ""))
-            .Where(x => x.Name.Contains(term, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(x => x.Name.StartsWith(term, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .Where(x => x.Name.Length > 0 && (term.Length == 0 || x.Name.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(x => term.Length > 0 && x.Name.StartsWith(term, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenByDescending(x => x.Recipe.Level)
-            .Take(MaxRows)
+            .ThenBy(x => x.Recipe.CraftType)
+            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
             .Select(x => x.Recipe);
     }
 
@@ -113,7 +113,7 @@ public sealed class RecipeView
         Theme.Wrapped("Gather the materials for anything you can craft, then craft it. No market or quest needed.", Theme.Text3);
 
         ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##recipeSearch", "Search recipes (at least 2 letters)", ref search, 100);
+        ImGui.InputTextWithHint("##recipeSearch", "Search recipes", ref search, 100);
         ImGui.SetNextItemWidth(110);
         using (var combo = ImRaii.Combo("##rjob", job < 0 ? "All jobs" : RecipeInfo.JobAbbreviations[job]))
         {
@@ -127,20 +127,31 @@ public sealed class RecipeView
         ImGui.SameLine();
         ImGui.Checkbox("Unlocked", ref unlockedOnly);
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Only recipes you can craft right now.");
+        ImGui.SameLine();
+        ImGui.AlignTextToFramePadding();
+        Theme.Muted($"{rows.Count:N0} recipes");
 
         ImGui.Spacing();
         using var scroll = ImRaii.Child("##recipeRows", Vector2.Zero);
         if (!scroll) return;
-        if (rows.Count == MaxRows) Theme.Muted($"Showing the first {MaxRows}. Type more to narrow it down.");
-        foreach (var r in rows)
+        // Thousands of recipes: only draw the rows on screen.
+        var clipper = ImGui.ImGuiListClipper();
+        clipper.Begin(rows.Count, RowHeight + ImGui.GetStyle().ItemSpacing.Y);
+        while (clipper.Step())
         {
-            if (Row(r, r == selected))
+            for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
             {
-                selectedRecipe = r.RecipeId;
-                quantity = 1;
-                startError = null;
+                var r = rows[i];
+                if (Row(r, r == selected))
+                {
+                    selectedRecipe = r.RecipeId;
+                    quantity = 1;
+                    startError = null;
+                }
             }
         }
+        clipper.End();
+        clipper.Destroy();
     }
 
     private bool Row(RecipeInfo r, bool selected)
