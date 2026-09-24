@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui.Dtr;
@@ -65,50 +66,61 @@ public sealed class Plugin : IDalamudPlugin
     public Plugin()
     {
         ECommonsMain.Init(PluginInterface, this);
-        Config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
-        Catalog = new ItemCatalog();
-        Tracker = new InventoryTracker();
-        Market = new MarketService();
-        Advice = new AdviceService(Config, Tracker, Market, Catalog);
-        Navigator = new BellNavigator();
-        Scanner = new ProfitScanner(Config, Market, Catalog);
-        Teleporter = new CityTeleporter();
-        Repair = new RepairService(Config, Teleporter);
-        Travel = new QuestTravel();
-        MobDrops = new MobDropService(PluginInterface.ConfigDirectory);
-        Combat = new CombatAssist();
-        Hunter = new MobHunter(Travel, Combat);
-        Crafter.Busy = () => Hunter.IsBusy ? "Stop the hunt first." : null;
-        Crafter = new CraftCoordinator(Tracker, Repair, Travel);
-        Quality = new QualityService(Config, Market, Tracker, Scanner);
-        Estimator = new JobEstimator(this);
-        Cordials = new CordialService(Config);
-        GbrSettings = new GatherBuddySettings(PluginInterface.ConfigDirectory);
-        Scrips = new ScripService(Config, Scanner, Market, Catalog);
-        ScripTracker = new ScripTracker(Config, Tracker, () => Scrips.Db);
-        TurnIn = new TurnInService(Teleporter, () => Scrips.Db);
-        Scrips.EnsureLoaded();
-        JobQuests = new JobQuestService(Scanner, Market, Tracker);
-        Theme.SetAccent(Config.Accent);
-        Theme.InitFonts(PluginInterface.UiBuilder);
-        Crafter.Finished += OnCraftFinished;
+        try
+        {
+            Config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+            Catalog = new ItemCatalog();
+            Tracker = new InventoryTracker();
+            Market = new MarketService();
+            Advice = new AdviceService(Config, Tracker, Market, Catalog);
+            Navigator = new BellNavigator();
+            Scanner = new ProfitScanner(Config, Market, Catalog);
+            Teleporter = new CityTeleporter();
+            Repair = new RepairService(Config, Teleporter);
+            Travel = new QuestTravel();
+            MobDrops = new MobDropService(PluginInterface.ConfigDirectory);
+            Combat = new CombatAssist();
+            Hunter = new MobHunter(Travel, Combat);
+            Crafter = new CraftCoordinator(Tracker, Repair, Travel);
+            Crafter.Busy = () => Hunter.IsBusy ? "Stop the hunt first." : null;
+            Quality = new QualityService(Config, Market, Tracker, Scanner);
+            Estimator = new JobEstimator(this);
+            Cordials = new CordialService(Config);
+            GbrSettings = new GatherBuddySettings(PluginInterface.ConfigDirectory);
+            Scrips = new ScripService(Config, Scanner, Market, Catalog);
+            ScripTracker = new ScripTracker(Config, Tracker, () => Scrips.Db);
+            TurnIn = new TurnInService(Teleporter, () => Scrips.Db);
+            Scrips.EnsureLoaded();
+            JobQuests = new JobQuestService(Scanner, Market, Tracker);
+            Theme.SetAccent(Config.Accent);
+            Theme.InitFonts(PluginInterface.UiBuilder);
+            Crafter.Finished += OnCraftFinished;
 
-        mainWindow = new MainWindow(this);
-        configWindow = new ConfigWindow(this);
-        windows.AddWindow(mainWindow);
-        windows.AddWindow(configWindow);
-        jobWindow = new JobStatusWindow(this);
-        windows.AddWindow(jobWindow);
+            mainWindow = new MainWindow(this);
+            configWindow = new ConfigWindow(this);
+            windows.AddWindow(mainWindow);
+            windows.AddWindow(configWindow);
+            jobWindow = new JobStatusWindow(this);
+            windows.AddWindow(jobWindow);
 
-        var info = new CommandInfo(OnCommand) { HelpMessage = "Open SellWise. \"/sellwise config\" opens settings, \"/sellwise city\" teleports to a random unlocked major city, \"/sellwise bell\" walks to the nearest summoning bell, \"/sellwise craft\" opens the profit finder, \"/sellwise recipe\" opens any-recipe crafting, \"/sellwise quests\" opens job quests, \"/sellwise repair\" repairs your gear, \"/sellwise scrips\" opens scrip farming, \"/sellwise turnin\" turns in crafter collectables, \"/sellwise stop\" stops everything SellWise started." };
-        CommandManager.AddHandler(Command, info);
-        CommandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand) { HelpMessage = "Alias for /sellwise.", ShowInHelp = false });
+            var info = new CommandInfo(OnCommand) { HelpMessage = "Open SellWise. \"/sellwise config\" opens settings, \"/sellwise city\" teleports to a random unlocked major city, \"/sellwise bell\" walks to the nearest summoning bell, \"/sellwise craft\" opens the profit finder, \"/sellwise recipe\" opens any-recipe crafting, \"/sellwise quests\" opens job quests, \"/sellwise repair\" repairs your gear, \"/sellwise scrips\" opens scrip farming, \"/sellwise turnin\" turns in crafter collectables, \"/sellwise stop\" stops everything SellWise started." };
+            CommandManager.AddHandler(Command, info);
+            CommandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand) { HelpMessage = "Alias for /sellwise.", ShowInHelp = false });
 
-        PluginInterface.UiBuilder.Draw += windows.Draw;
-        PluginInterface.UiBuilder.OpenMainUi += ToggleMain;
-        PluginInterface.UiBuilder.OpenConfigUi += ToggleConfig;
-        Framework.Update += OnFrameworkUpdate;
-        ClientState.Login += Advice.OnHomeWorldChanged;
+            PluginInterface.UiBuilder.Draw += windows.Draw;
+            PluginInterface.UiBuilder.OpenMainUi += ToggleMain;
+            PluginInterface.UiBuilder.OpenConfigUi += ToggleConfig;
+            Framework.Update += OnFrameworkUpdate;
+            ClientState.Login += Advice.OnHomeWorldChanged;
+    
+        }
+        catch
+        {
+            // Dalamud never calls Dispose on a plugin that failed to start, so undo what did start
+            // (ECommons, hooks, handlers) before passing the error on; otherwise it lingers in the game.
+            Shutdown();
+            throw;
+        }
     }
 
     public void ToggleMain() => mainWindow.Toggle();
@@ -257,26 +269,41 @@ public sealed class Plugin : IDalamudPlugin
         dtrEntry.OnClick ??= _ => mainWindow.IsOpen = true;
     }
 
-    public void Dispose()
-    {
-        Framework.Update -= OnFrameworkUpdate;
-        Crafter.Finished -= OnCraftFinished;
-        ClientState.Login -= Advice.OnHomeWorldChanged;
-        PluginInterface.UiBuilder.Draw -= windows.Draw;
-        PluginInterface.UiBuilder.OpenMainUi -= ToggleMain;
-        PluginInterface.UiBuilder.OpenConfigUi -= ToggleConfig;
-        CommandManager.RemoveHandler(Command);
-        CommandManager.RemoveHandler(ShortCommand);
+    public void Dispose() => Shutdown();
 
-        dtrEntry?.Remove();
-        windows.RemoveAllWindows();
-        Theme.DisposeFonts();
-        Hunter.Stop();
-        MobDrops.Dispose();
-        Scrips.Dispose();
-        Scanner.Dispose();
-        Market.Dispose();
-        Tracker.Dispose();
-        ECommonsMain.Dispose();
+    /// <summary>Tears down everything that was set up. Safe on a partly constructed plugin; one failing step doesn't stop the rest.</summary>
+    private void Shutdown()
+    {
+        Step(() => Framework.Update -= OnFrameworkUpdate);
+        Step(() => { if (Crafter != null) Crafter.Finished -= OnCraftFinished; });
+        Step(() => { if (Advice != null) ClientState.Login -= Advice.OnHomeWorldChanged; });
+        Step(() => PluginInterface.UiBuilder.Draw -= windows.Draw);
+        Step(() => PluginInterface.UiBuilder.OpenMainUi -= ToggleMain);
+        Step(() => PluginInterface.UiBuilder.OpenConfigUi -= ToggleConfig);
+        Step(() => CommandManager.RemoveHandler(Command));
+        Step(() => CommandManager.RemoveHandler(ShortCommand));
+
+        Step(() => dtrEntry?.Remove());
+        Step(() => windows.RemoveAllWindows());
+        Step(Theme.DisposeFonts);
+        Step(() => Hunter?.Stop());
+        Step(() => MobDrops?.Dispose());
+        Step(() => Scrips?.Dispose());
+        Step(() => Scanner?.Dispose());
+        Step(() => Market?.Dispose());
+        Step(() => Tracker?.Dispose());
+        Step(ECommonsMain.Dispose);
+    }
+
+    private static void Step(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception e)
+        {
+            Log.Warning(e, "SellWise shutdown step failed");
+        }
     }
 }
