@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Lumina.Excel.Sheets;
@@ -16,11 +17,16 @@ public sealed class RecipeDb
     public IReadOnlySet<uint> Gatherable { get; }
     public IReadOnlySet<uint> VendorSold { get; }
 
+    /// <summary>How each gatherable item is gathered: always-up or timed nodes, level and spawn windows.</summary>
+    public IReadOnlyDictionary<uint, GatherInfo> GatherInfo { get; }
+
     /// <summary>Crafting foods and medicines (NQ and HQ versions).</summary>
     public IReadOnlyList<Consumable> Consumables { get; }
 
-    private RecipeDb(List<RecipeInfo> recipes, HashSet<uint> gatherable, HashSet<uint> vendorSold, List<Consumable> consumables)
+    private RecipeDb(List<RecipeInfo> recipes, Dictionary<uint, GatherInfo> gatherInfo, HashSet<uint> vendorSold, List<Consumable> consumables)
     {
+        GatherInfo = gatherInfo;
+        var gatherable = gatherInfo.Keys.ToHashSet();
         Consumables = consumables;
         Recipes = recipes;
         ByResult = recipes.GroupBy(r => r.ResultItemId).ToDictionary(g => g.Key, g => g.OrderBy(r => r.Level).First());
@@ -76,11 +82,7 @@ public sealed class RecipeDb
                 collectable));
         }
 
-        var gatherable = new HashSet<uint>();
-        foreach (var g in data.GetExcelSheet<GatheringItem>())
-        {
-            if (g.Item.RowId != 0) gatherable.Add(g.Item.RowId);
-        }
+        var gatherInfo = LoadGatherInfo();
 
         var vendorSold = new HashSet<uint>();
         foreach (var shop in data.GetSubrowExcelSheet<GilShopItem>())
@@ -92,8 +94,72 @@ public sealed class RecipeDb
         }
 
         var consumables = LoadConsumables();
-        Plugin.Log.Information($"Loaded {recipes.Count} recipes, {gatherable.Count} gatherable items, {vendorSold.Count} vendor items, {consumables.Count} crafting consumables");
-        return new RecipeDb(recipes, gatherable, vendorSold, consumables);
+        Plugin.Log.Information($"Loaded {recipes.Count} recipes, {gatherInfo.Count} gatherable items, {vendorSold.Count} vendor items, {consumables.Count} crafting consumables");
+        return new RecipeDb(recipes, gatherInfo, vendorSold, consumables);
+    }
+
+    private const uint DiademUse = 47;
+
+    /// <summary>
+    /// Which items can be gathered in the open world, and whether from always-up nodes or only timed ones
+    /// (unspoiled, legendary, ephemeral). Diadem-only items don't count: GatherBuddy can't farm them for a craft.
+    /// </summary>
+    private static Dictionary<uint, GatherInfo> LoadGatherInfo()
+    {
+        var data = Plugin.DataManager;
+        var itemByGatherRow = new Dictionary<uint, uint>();
+        foreach (var g in data.GetExcelSheet<GatheringItem>())
+            if (g.Item.RowId != 0) itemByGatherRow[g.RowId] = g.Item.RowId;
+
+        var transients = data.GetExcelSheet<GatheringPointTransient>();
+        var pointsByBase = data.GetExcelSheet<GatheringPoint>()
+            .Where(p => p.GatheringPointBase.RowId != 0 && p.TerritoryType.RowId != 0
+                        && p.TerritoryType.ValueNullable?.TerritoryIntendedUse.RowId != DiademUse)
+            .GroupBy(p => p.GatheringPointBase.RowId)
+            .ToDictionary(g => g.Key, g => g.Select(p => p.RowId).ToList());
+
+        static int Minutes(int hhmm) => hhmm / 100 * 60 + hhmm % 100;
+
+        var found = new Dictionary<uint, (bool Regular, int Level, HashSet<SpawnWindow> Windows)>();
+        foreach (var node in data.GetExcelSheet<GatheringPointBase>())
+        {
+            if (!pointsByBase.TryGetValue(node.RowId, out var pointIds)) continue;
+
+            var windows = new HashSet<SpawnWindow>();
+            var anyRegular = false;
+            foreach (var pointId in pointIds)
+            {
+                var pointWindows = new List<SpawnWindow>();
+                if (transients.GetRowOrDefault(pointId) is { } t)
+                {
+                    if (t.GatheringRarePopTimeTable.ValueNullable is { RowId: > 0 } rare)
+                    {
+                        for (var i = 0; i < rare.StartTime.Count && i < rare.Duration.Count; i++)
+                            if (rare.Duration[i] > 0) pointWindows.Add(new SpawnWindow(Minutes(rare.StartTime[i]), Minutes(rare.Duration[i])));
+                    }
+                    if (t.EphemeralStartTime != 65535)
+                    {
+                        var start = Minutes(t.EphemeralStartTime);
+                        pointWindows.Add(new SpawnWindow(start, (Minutes(t.EphemeralEndTime) - start + 1440) % 1440));
+                    }
+                }
+                if (pointWindows.Count == 0) anyRegular = true;
+                windows.UnionWith(pointWindows);
+            }
+
+            foreach (var slot in node.Item)
+            {
+                if (!itemByGatherRow.TryGetValue(slot.RowId, out var itemId)) continue;
+                var prev = found.TryGetValue(itemId, out var p) ? p : (false, int.MaxValue, new HashSet<SpawnWindow>());
+                prev.Item3.UnionWith(windows);
+                found[itemId] = (prev.Item1 || anyRegular, Math.Min(prev.Item2, node.GatheringLevel), prev.Item3);
+            }
+        }
+
+        return found.ToDictionary(
+            kv => kv.Key,
+            kv => new GatherInfo(kv.Key, kv.Value.Regular ? NodeKind.Regular : NodeKind.Timed, kv.Value.Level,
+                kv.Value.Regular ? [] : kv.Value.Windows.OrderBy(w => w.StartMinute).ToList()));
     }
 
     private const uint ParamCraftsmanship = 70, ParamControl = 71, ParamCP = 11;

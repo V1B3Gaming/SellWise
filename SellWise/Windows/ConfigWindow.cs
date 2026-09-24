@@ -216,13 +216,14 @@ public sealed class ConfigWindow : Window
         changed |= Check("Otherwise teleport to a city mender", c.AllowNpcRepair, v => c.AllowNpcRepair = v);
         Help("Picks a random enabled city (from the teleport list below) that has a mender, walks there with vnavmesh and repairs everything.");
 
-        Theme.Wrapped("Gathering potions (cordials) and food during gathering are handled by GatherBuddy Reborn: turn on consumables in its auto-gather settings.", Theme.Text3);
-
         ImGui.Spacing();
         ImGui.TextUnformatted("Other");
         ImGui.Separator();
         changed |= Check("Show undercut count in server info bar", c.ShowDtr, v => c.ShowDtr = v);
         changed |= Check("Target the bell after walking to it", c.TargetBellOnArrival, v => c.TargetBellOnArrival = v);
+        changed |= Check("Open the crafting status window when a job starts", c.ShowJobWindow, v => c.ShowJobWindow = v);
+        changed |= Check("Use cordials while a craft job is gathering", c.UseCordials, v => c.UseCordials = v);
+        Help("Drinks the biggest cordial that won't waste GP whenever the cordial cooldown is ready, between nodes. GatherBuddy Reborn can do this too (auto-gather preset > Consumables); they share one cooldown, so both on is safe.");
 
         ImGui.Spacing();
         ImGui.TextUnformatted("\"Teleport to a city\" picks randomly from:");

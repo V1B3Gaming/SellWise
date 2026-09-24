@@ -255,7 +255,7 @@ public sealed class MainWindow : Window
         using (ImRaii.Group())
         {
             ImGui.Dummy(new Vector2(0, 4));
-            using (Theme.HeadingFont()) ImGui.TextUnformatted(name);
+            using (Theme.HeadingFont()) ImGui.TextUnformatted(Theme.Fit(name, ImGui.GetContentRegionAvail().X));
             tags();
         }
     }
@@ -374,7 +374,7 @@ public sealed class MainWindow : Window
         ItemHeader(r.Item.Icon, r.Hq, r.Item.Name, () =>
         {
             if (r.Hq) { Theme.Tag("HQ", Theme.Current.Color, small: true); ImGui.SameLine(); }
-            Theme.Secondary($"{r.Quantity:N0} owned · {r.Where}");
+            Theme.Secondary(Theme.Fit($"{r.Quantity:N0} owned · {r.Where}", ImGui.GetContentRegionAvail().X));
         });
         ImGui.Spacing();
 
@@ -387,14 +387,14 @@ public sealed class MainWindow : Window
         ImGui.SetCursorScreenPos(pos + new Vector2(18, 14));
         using (ImRaii.Group())
         {
-            ImGui.TextColored(color, r.Verdict switch
+            ImGui.TextColored(color, Theme.Fit(r.Verdict switch
             {
                 Verdict.List => "List now",
                 Verdict.ListSlow => "List when you have a spare slot",
                 Verdict.Hold => "Hold, or list behind the dump",
                 Verdict.Vendor => "Sell to a vendor",
                 _ => label,
-            });
+            }, width - 190));
             if (r.Verdict == Verdict.Vendor)
             {
                 using (Theme.BigFont()) ImGui.TextColored(Theme.Vendor, $"{r.VendorTotal:N0} gil");
@@ -405,7 +405,7 @@ public sealed class MainWindow : Window
                 using (Theme.BigFont()) ImGui.TextUnformatted($"{price:N0}");
                 ImGui.SameLine();
                 Theme.Muted("each");
-                Theme.Secondary($"{r.NetTotal:N0} gil after tax" + (double.IsInfinity(r.EstDays) ? "" : r.EstDays < 1 ? " · sells in under a day" : $" · about {r.EstDays:0} days to sell"));
+                Theme.Secondary(Theme.Fit($"{r.NetTotal:N0} gil after tax" + (double.IsInfinity(r.EstDays) ? "" : r.EstDays < 1 ? " · sells in under a day" : $" · about {r.EstDays:0} days to sell"), width - 190));
             }
             else
             {
@@ -565,7 +565,7 @@ public sealed class MainWindow : Window
         ItemHeader(selected.Item.Icon, selected.Hq, selected.Item.Name, () =>
         {
             if (selected.Hq) { Theme.Tag("HQ", Theme.Current.Color, small: true); ImGui.SameLine(); }
-            Theme.Secondary($"{selected.Quantity:N0} listed by {l.RetainerName}");
+            Theme.Secondary(Theme.Fit($"{selected.Quantity:N0} listed by {l.RetainerName}", ImGui.GetContentRegionAvail().X));
         });
         ImGui.Spacing();
 

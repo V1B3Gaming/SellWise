@@ -186,8 +186,8 @@ public static class Theme
         var height = ImGui.GetTextLineHeight() * 2 + 16;
         Box(pos, pos + new Vector2(width, height), Panel2, Panel2);
         var dl = ImGui.GetWindowDrawList();
-        dl.AddText(pos + new Vector2(10, 7), U32(Text3), label);
-        dl.AddText(pos + new Vector2(10, 9 + ImGui.GetTextLineHeight()), U32(valueColor ?? Text), value);
+        dl.AddText(pos + new Vector2(10, 7), U32(Text3), Fit(label, width - 20));
+        dl.AddText(pos + new Vector2(10, 9 + ImGui.GetTextLineHeight()), U32(valueColor ?? Text), Fit(value, width - 20));
         ImGui.Dummy(new Vector2(width, height));
     }
 
@@ -269,4 +269,30 @@ public static class Theme
     };
 
     public static IEnumerable<T> Each<T>(params T[] items) => items;
+
+    /// <summary>Cuts text down (with "...") so it fits in <paramref name="maxWidth"/> pixels. Keeps columns from spilling into each other.</summary>
+    public static string Fit(string text, float maxWidth)
+    {
+        if (maxWidth <= 0) return "";
+        if (ImGui.CalcTextSize(text).X <= maxWidth) return text;
+        const string dots = "...";
+        var lo = 0;
+        var hi = text.Length;
+        while (lo < hi)
+        {
+            var mid = (lo + hi + 1) / 2;
+            if (ImGui.CalcTextSize(text[..mid] + dots).X <= maxWidth) lo = mid;
+            else hi = mid - 1;
+        }
+        return lo == 0 ? dots : text[..lo].TrimEnd() + dots;
+    }
+
+    /// <summary>Short counts for tight spaces: 950, 5.8k, 12k, 1.2M.</summary>
+    public static string Compact(long n) => Math.Abs(n) switch
+    {
+        >= 1_000_000 => $"{n / 1_000_000.0:0.#}M",
+        >= 10_000 => $"{n / 1000.0:0}k",
+        >= 1_000 => $"{n / 1000.0:0.#}k",
+        _ => n.ToString(),
+    };
 }

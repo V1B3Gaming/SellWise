@@ -209,7 +209,7 @@ public sealed class CraftView
         using (ImRaii.Group())
         {
             ImGui.Dummy(new Vector2(0, 4));
-            using (Theme.HeadingFont()) ImGui.TextUnformatted(o.Item.Name);
+            using (Theme.HeadingFont()) ImGui.TextUnformatted(Theme.Fit(o.Item.Name, ImGui.GetContentRegionAvail().X));
             if (o.Unlocked) Theme.Tag("Unlocked", Theme.Good, small: true);
             else Theme.Tag("Locked", Theme.Bad, small: true);
             ImGui.SameLine();
@@ -344,6 +344,13 @@ public sealed class CraftView
     private void DrawMaterials(CraftOpportunity o)
     {
         Theme.Secondary($"Materials for {quantity} craft{(quantity == 1 ? "" : "s")}");
+        var estimate = plugin.Estimator.Estimate(o, quantity);
+        var timing = estimate.Materials.ToDictionary(m => m.Line.ItemId);
+        ImGui.SameLine();
+        Theme.Muted(Theme.Fit($"· about {TimeEstimator.Format(estimate.Gather)} gathering + {TimeEstimator.Format(estimate.Craft)} crafting", ImGui.GetContentRegionAvail().X));
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Rough estimate: ~40s per node visit and a minute of travel per material, plus waiting for\n" +
+                             "timed nodes to spawn; crafting at ~3s per action. Retainer stock counts as already gathered.");
         var tracker = plugin.Tracker;
         var i = 0;
         foreach (var m in o.Materials)
@@ -359,10 +366,22 @@ public sealed class CraftView
             Theme.Icon(info?.Icon ?? 0, false, m.Depth == 0 ? 28 : 24);
             ImGui.SameLine();
             ImGui.AlignTextToFramePadding();
-            ImGui.TextUnformatted(m.Name);
+            var tagColumn = ImGui.GetWindowContentRegionMax().X - 330;
+            var nameWidth = tagColumn - ImGui.GetCursorPosX() - 10;
+            var hasTiming = timing.TryGetValue(m.ItemId, out var t);
+            var when = hasTiming && t!.Gather is { Timed: true } ? $"  ({JobEstimator.When(t)})" : "";
+            ImGui.TextUnformatted(Theme.Fit(m.Name + when, nameWidth));
+            if (ImGui.IsItemHovered())
+            {
+                var detail = hasTiming && t!.Gather is { } g
+                    ? g.Timed ? $"\nTimed node: {JobEstimator.When(t)}. About {TimeEstimator.Format(g.Total)} to gather what's missing."
+                              : $"\nAbout {TimeEstimator.Format(g.Total)} to gather what's missing ({g.Visits} node visits)."
+                    : "";
+                ImGui.SetTooltip(m.Name + detail);
+            }
 
             var col = ImGui.GetContentRegionAvail().X;
-            ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - 330);
+            ImGui.SameLine(tagColumn);
             ImGui.AlignTextToFramePadding();
             var (src, srcColor) = m.Source switch
             {
@@ -460,7 +479,7 @@ public sealed class CraftView
         ImGui.SameLine(0, 12);
         using (ImRaii.Group())
         {
-            using (Theme.HeadingFont()) ImGui.TextUnformatted($"{o.Item.Name} ×{job.Crafts}");
+            using (Theme.HeadingFont()) ImGui.TextUnformatted(Theme.Fit($"{o.Item.Name} ×{job.Crafts}", ImGui.GetContentRegionAvail().X - 200));
             var (stateText, stateColor) = job.State switch
             {
                 CraftJobState.Running => (job.WaitingForRepair ? "Repairing" : "Running", Theme.Current.Color),
@@ -488,7 +507,9 @@ public sealed class CraftView
 
         ImGui.Spacing();
         using (ImRaii.PushColor(ImGuiCol.FrameBg, Theme.Raise2))
-            ImGui.ProgressBar(job.Wanted > 0 ? Math.Clamp(job.Made / (float)job.Wanted, 0, 1) : 0, new Vector2(-1, 22), job.Status);
+            ImGui.ProgressBar(job.Wanted > 0 ? Math.Clamp(job.Made / (float)job.Wanted, 0, 1) : 0, new Vector2(-1, 22), Theme.Fit(job.Status, ImGui.GetContentRegionAvail().X - 20));
+        var estimate = plugin.Estimator.Estimate(o, job.Crafts, job.Made);
+        Theme.Wrapped($"About {TimeEstimator.Format(estimate.Total)} left: {TimeEstimator.Format(estimate.Gather)} gathering, {TimeEstimator.Format(estimate.Craft)} crafting", Theme.Text3);
         ImGui.Spacing();
 
         // Work out which stage we're in from what's in the bags.
@@ -509,13 +530,11 @@ public sealed class CraftView
 
         StageCard("##st1", "1  Gather", stage, 1, widths[0], height, () =>
         {
-            var perRow = Math.Max(1, (int)((widths[0] - 28) / 64));
             var firstMissing = leaves.FindIndex(l => tracker.CountInBags(l.Line.ItemId) < l.Need);
             for (var i = 0; i < leaves.Count; i++)
             {
-                if (i % perRow != 0) ImGui.SameLine(0, 8);
                 var (line, need) = leaves[i];
-                MaterialCell(line.ItemId, need, i == firstMissing && stage == 1, line.Source == MaterialSource.Gather ? Theme.Gather : Theme.Vendor);
+                MaterialCell(line.ItemId, need, i == firstMissing && stage == 1, line.Source == MaterialSource.Gather ? Theme.Gather : Theme.Vendor, first: i == 0);
             }
         });
         Arrow(arrow, height);
@@ -523,15 +542,12 @@ public sealed class CraftView
         {
             if (parts.Count == 0) Theme.Muted("No intermediate crafts.");
             for (var i = 0; i < parts.Count; i++)
-            {
-                if (i % 2 != 0) ImGui.SameLine(0, 8);
-                MaterialCell(parts[i].Line.ItemId, parts[i].Need, false, Theme.Current.Color);
-            }
+                MaterialCell(parts[i].Line.ItemId, parts[i].Need, false, Theme.Current.Color, first: i == 0);
         });
         Arrow(arrow, height);
         StageCard("##st3", "3  Craft", stage, 3, widths[2], height, () =>
         {
-            MaterialCell(o.Item.Id, job.Wanted, stage == 3, Theme.Current.Color, job.Made);
+            MaterialCell(o.Item.Id, job.Wanted, stage == 3, Theme.Current.Color, job.Made, first: true);
         });
         Arrow(arrow, height);
         StageCard("##st4", "4  Sell", stage, 4, widths[3], height, () =>
@@ -541,16 +557,16 @@ public sealed class CraftView
             if (job.State == CraftJobState.Finished && rec?.SuggestedPrice is { } price)
             {
                 using (Theme.BigFont()) ImGui.TextUnformatted($"{price:N0}");
-                Theme.Muted("each, fresh price");
-                Theme.Secondary($"{rec.NetTotal:N0} gil after tax");
+                Theme.Wrapped("each, fresh price", Theme.Text3);
+                Theme.Wrapped($"{rec.NetTotal:N0} gil after tax", Theme.Text2);
                 if (Theme.PrimaryButton("Copy price")) ImGui.SetClipboardText(price.ToString());
             }
             else
             {
                 using (Theme.BigFont()) ImGui.TextUnformatted($"{o.SalePrice:N0}");
-                Theme.Muted("each, estimated");
-                ImGui.TextColored(Theme.Good, $"{o.ProfitPerCraft * job.Crafts:N0} expected profit");
-                Theme.Muted("A fresh price is fetched when the crafts land.");
+                Theme.Wrapped("each, estimated", Theme.Text3);
+                Theme.Wrapped($"{o.ProfitPerCraft * job.Crafts:N0} expected profit", Theme.Good);
+                Theme.Wrapped("A fresh price is fetched when the crafts land.", Theme.Text3);
             }
         });
 
@@ -559,23 +575,33 @@ public sealed class CraftView
             ImGui.TextColored(Theme.Hold, $"Repair: {plugin.Repair.Status}");
     }
 
-    private void MaterialCell(uint itemId, int need, bool active, Vector4 color, int? haveOverride = null)
+    /// <summary>
+    /// An icon with a have/need count underneath. The tile is as wide as its text and starts a new line when the
+    /// card is full, so nothing spills into the next tile or out of the card.
+    /// </summary>
+    private void MaterialCell(uint itemId, int need, bool active, Vector4 color, int? haveOverride = null, bool first = false)
     {
         var info = plugin.Catalog.Get(itemId);
         var have = haveOverride ?? plugin.Tracker.CountInBags(itemId);
-        using (ImRaii.Group())
+        var text = $"{Theme.Compact(have)}/{Theme.Compact(need)}";
+        var ts = ImGui.CalcTextSize(text);
+        const float icon = 40;
+        var size = new Vector2(Math.Max(icon + 6, ts.X + 6), icon + 4 + ts.Y);
+
+        if (!first)
         {
-            var pos = ImGui.GetCursorScreenPos();
-            Theme.Icon(info?.Icon ?? 0, false, 44);
-            var dl = ImGui.GetWindowDrawList();
-            if (active) dl.AddRect(pos - new Vector2(2), pos + new Vector2(46), Theme.U32(Theme.Current.Color), 3f, ImDrawFlags.None, 2f);
-            var text = $"{have}/{need}";
-            var ts = ImGui.CalcTextSize(text);
-            var tpos = pos + new Vector2((44 - ts.X) / 2, 44 - ts.Y + 2);
-            dl.AddRectFilled(tpos - new Vector2(3, 0), tpos + ts + new Vector2(3, 0), Theme.U32(Theme.Bg0), 2f);
-            dl.AddText(tpos, Theme.U32(have >= need ? Theme.Good : color), text);
-            ImGui.Dummy(new Vector2(56, 2));
+            ImGui.SameLine(0, 10);
+            if (ImGui.GetCursorPosX() + size.X > ImGui.GetWindowContentRegionMax().X) ImGui.NewLine();
         }
+
+        var pos = ImGui.GetCursorScreenPos();
+        var dl = ImGui.GetWindowDrawList();
+        var iconMin = pos + new Vector2((size.X - icon) / 2, 0);
+        var tex = Plugin.TextureProvider.GetFromGameIcon(new GameIconLookup(info?.Icon ?? 0)).GetWrapOrEmpty();
+        dl.AddImage(tex.Handle, iconMin, iconMin + new Vector2(icon));
+        if (active) dl.AddRect(iconMin - new Vector2(2), iconMin + new Vector2(icon + 2), Theme.U32(Theme.Current.Color), 3f, ImDrawFlags.None, 2f);
+        dl.AddText(pos + new Vector2((size.X - ts.X) / 2, icon + 4), Theme.U32(have >= need ? Theme.Good : color), text);
+        ImGui.Dummy(size);
         if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{info?.Name ?? "Item"}: {have:N0} of {need:N0}");
     }
 

@@ -60,6 +60,7 @@ Hit **Scan** and SellWise prices every recipe that sells on your world. It takes
 - **What the materials really cost:** the cheapest of gathering them, buying from a vendor, buying on the market, or crafting the parts yourself.
 - **How much you'd actually make:** it ranks by what one batch earns, sized to what your world's market can take in a couple of days, so you don't end up undercutting yourself.
 - **Whether you can make it:** locked recipes say why (level, a master recipe book, or a quest).
+- **How long it'll take:** a rough gathering and crafting time, including waiting for timed nodes (the ones that only spawn at certain Eorzea hours) to come up.
 - **Whether you'll hit HQ:** it uses your saved stats for that job and simulates the craft. If you'd fall short, it suggests the cheapest food and potion to get you there, and anything already in your bags counts as free. For scrip collectables it aims for the top reward tier.
 
 ### Letting it run
@@ -67,6 +68,8 @@ Hit **Scan** and SellWise prices every recipe that sells on your world. It takes
 ![Craft pipeline](docs/images/craft-running.png)
 
 **Gather + craft** hands the job to GatherBuddy Reborn, which goes and gathers whatever's missing, grabs anything sitting on your retainers, and crafts it. If you've already got the materials, **Craft with Artisan** skips straight to crafting. You can watch it move through gathering, crafting the parts, crafting the item and selling. When it's done, SellWise pulls a fresh price so you know what to list at.
+
+A small **Crafting status** window pops up too. While it's gathering, it lists every material with a meter that fills as it lands in your bags, how long each will take (or when a timed node next spawns), and your GP. Once everything's gathered it switches to a crafting meter with time left, and when it's finished it shows the price to list at. Tick **Use cordials when ready** there and SellWise drinks the biggest cordial that won't waste GP whenever the cooldown's up, between nodes.
 
 ## The little extras
 

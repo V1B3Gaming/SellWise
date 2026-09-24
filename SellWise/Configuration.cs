@@ -32,6 +32,12 @@ public sealed class Configuration : IPluginConfiguration
     public bool ShowDtr { get; set; } = true;
     public bool TargetBellOnArrival { get; set; } = true;
 
+    /// <summary>Open the small crafting status window when a craft job starts.</summary>
+    public bool ShowJobWindow { get; set; } = true;
+
+    /// <summary>Drink cordials between gathering nodes while a craft job is gathering.</summary>
+    public bool UseCordials { get; set; } = false;
+
     public HashSet<uint> IgnoredItems { get; set; } = [];
 
     public CraftSettings Craft { get; set; } = new();

@@ -41,10 +41,14 @@ public sealed class Plugin : IDalamudPlugin
     public CityTeleporter Teleporter { get; }
     public RepairService Repair { get; }
     public QualityService Quality { get; }
+    public JobEstimator Estimator { get; }
+    public CordialService Cordials { get; }
 
     private readonly WindowSystem windows = new("SellWise");
     private readonly MainWindow mainWindow;
     private readonly ConfigWindow configWindow;
+    private readonly JobStatusWindow jobWindow;
+    private CraftJob? lastJob;
     private IDtrBarEntry? dtrEntry;
 
     public Plugin()
@@ -61,6 +65,8 @@ public sealed class Plugin : IDalamudPlugin
         Repair = new RepairService(Config, Teleporter);
         Crafter = new CraftCoordinator(Tracker, Repair);
         Quality = new QualityService(Config, Market, Tracker, Scanner);
+        Estimator = new JobEstimator(this);
+        Cordials = new CordialService(Config);
         Theme.SetAccent(Config.Accent);
         Theme.InitFonts(PluginInterface.UiBuilder);
         Crafter.Finished += OnCraftFinished;
@@ -69,6 +75,8 @@ public sealed class Plugin : IDalamudPlugin
         configWindow = new ConfigWindow(this);
         windows.AddWindow(mainWindow);
         windows.AddWindow(configWindow);
+        jobWindow = new JobStatusWindow(this);
+        windows.AddWindow(jobWindow);
 
         var info = new CommandInfo(OnCommand) { HelpMessage = "Open SellWise. \"/sellwise config\" opens settings, \"/sellwise city\" teleports to a random unlocked major city, \"/sellwise bell\" walks to the nearest summoning bell, \"/sellwise craft\" opens the profit finder, \"/sellwise repair\" repairs your gear, \"/sellwise stop\" stops everything SellWise started." };
         CommandManager.AddHandler(Command, info);
@@ -83,6 +91,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public void ToggleMain() => mainWindow.Toggle();
     public void ToggleConfig() => configWindow.Toggle();
+    public void ShowCraft() => mainWindow.ShowCraftTab();
 
     private void OnCommand(string command, string args)
     {
@@ -130,6 +139,14 @@ public sealed class Plugin : IDalamudPlugin
         Repair.Update();
         Quality.Update();
         Crafter.Update();
+
+        // Pop the status window up when a new job starts.
+        if (Crafter.Job != lastJob)
+        {
+            lastJob = Crafter.Job;
+            if (lastJob != null && Config.ShowJobWindow) jobWindow.IsOpen = true;
+        }
+        Cordials.Update(Crafter.IsRunning && !(Crafter.Job?.WaitingForRepair ?? false));
         UpdateDtr();
     }
 
