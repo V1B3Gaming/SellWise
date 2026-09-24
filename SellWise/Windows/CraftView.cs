@@ -266,20 +266,20 @@ public sealed class CraftView
         ImGui.Spacing();
 
         // Leave room for the action bar (and the buy-first note) at the bottom.
-        var toBuy = ToBuy(o);
+        var toBuy = ToBuy(o, quantity);
         var qualityProblem = o.SellHq && CraftCoordinator.VulcanAvailable && !ArtisanFinishes ? plugin.GbrSettings.QualityProblem : null;
         var barHeight = ImGui.GetFrameHeight() + 20
                         + (toBuy.Count > 0 ? ImGui.GetTextLineHeightWithSpacing() * 2 : 0)
                         + (qualityProblem != null ? ImGui.GetFrameHeightWithSpacing() : 0);
         using (var mats = ImRaii.Child("##mats", new Vector2(0, ImGui.GetContentRegionAvail().Y - barHeight)))
         {
-            if (mats) DrawMaterials(o);
+            if (mats) DrawMaterials(o, quantity);
         }
         DrawActionBar(o, toBuy, qualityProblem);
     }
 
     /// <summary>How to get the materials: your choice, not SellWise's.</summary>
-    private void DrawMaterialMode(CraftOpportunity o)
+    public void DrawMaterialMode(CraftOpportunity o)
     {
         ImGui.AlignTextToFramePadding();
         Theme.Secondary("Get materials");
@@ -314,12 +314,12 @@ public sealed class CraftView
     }
 
     /// <summary>Materials planned as bought (market or NPC) that aren't in your bags or on retainers yet.</summary>
-    private List<(MaterialLine Line, int Missing)> ToBuy(CraftOpportunity o)
+    public List<(MaterialLine Line, int Missing)> ToBuy(CraftOpportunity o, int crafts)
     {
         var list = new List<(MaterialLine, int)>();
         foreach (var g in o.Materials.Where(m => m.Source is MaterialSource.Buy or MaterialSource.Vendor).GroupBy(m => m.ItemId))
         {
-            var need = (int)Math.Ceiling(g.Sum(m => m.AmountPerCraft) * quantity);
+            var need = (int)Math.Ceiling(g.Sum(m => m.AmountPerCraft) * crafts);
             var missing = need - plugin.Tracker.CountInBags(g.Key) - plugin.Tracker.CountOnRetainers(g.Key);
             if (missing > 0) list.Add((g.First(), missing));
         }
@@ -425,10 +425,10 @@ public sealed class CraftView
     private static string Spaced(CraftAction a)
         => string.Concat(a.ToString().Select((ch, i) => i > 0 && char.IsUpper(ch) ? " " + ch : ch.ToString()));
 
-    private void DrawMaterials(CraftOpportunity o)
+    public void DrawMaterials(CraftOpportunity o, int crafts)
     {
-        Theme.Secondary($"Materials for {quantity} craft{(quantity == 1 ? "" : "s")}");
-        var estimate = plugin.Estimator.Estimate(o, quantity, 0, CraftBackend.Artisan); // follows the plan below
+        Theme.Secondary($"Materials for {crafts} craft{(crafts == 1 ? "" : "s")}");
+        var estimate = plugin.Estimator.Estimate(o, crafts, 0, CraftBackend.Artisan); // follows the plan below
         var timing = estimate.Materials.ToDictionary(m => m.Line.ItemId);
         ImGui.SameLine();
         Theme.Muted(Theme.Fit($"· about {TimeEstimator.Format(estimate.Gather)} gathering + {TimeEstimator.Format(estimate.Craft)} crafting", ImGui.GetContentRegionAvail().X));
@@ -441,7 +441,7 @@ public sealed class CraftView
         foreach (var m in o.Materials)
         {
             i++;
-            var need = (int)Math.Ceiling(m.AmountPerCraft * quantity);
+            var need = (int)Math.Ceiling(m.AmountPerCraft * crafts);
             var bags = tracker.CountInBags(m.ItemId);
             var retainers = tracker.CountOnRetainers(m.ItemId);
             var info = plugin.Catalog.Get(m.ItemId);

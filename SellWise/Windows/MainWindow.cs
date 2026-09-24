@@ -31,6 +31,7 @@ public sealed class MainWindow : Window
     private readonly CraftView craftView;
     private readonly ScripView scripView;
     private readonly JobQuestView questView;
+    private readonly RecipeView recipeView;
     private int craftTab;
     private IDisposable? theme;
     private IDisposable? edgeToEdge;
@@ -48,6 +49,7 @@ public sealed class MainWindow : Window
         craftView = new CraftView(plugin);
         scripView = new ScripView(plugin, craftView);
         questView = new JobQuestView(plugin, craftView);
+        recipeView = new RecipeView(plugin, craftView);
         Size = new Vector2(1180, 720);
         SizeCondition = ImGuiCond.FirstUseEver;
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(900, 560), MaximumSize = new Vector2(float.MaxValue, float.MaxValue) };
@@ -62,11 +64,18 @@ public sealed class MainWindow : Window
         craftTab = 0;
     }
 
-    public void ShowQuestTab()
+    public void ShowRecipeTab()
     {
         IsOpen = true;
         view = View.Craft;
         craftTab = 1;
+    }
+
+    public void ShowQuestTab()
+    {
+        IsOpen = true;
+        view = View.Craft;
+        craftTab = 2;
     }
 
     public void ShowScripTab()
@@ -120,7 +129,7 @@ public sealed class MainWindow : Window
 
     // ---- Craft section: for profit / job quests -----------------------------------------------------
 
-    private static readonly string[] CraftTabs = ["For profit", "Job quests"];
+    private static readonly string[] CraftTabs = ["For profit", "Any recipe", "Job quests"];
 
     private void DrawCraftSection()
     {
@@ -141,8 +150,12 @@ public sealed class MainWindow : Window
             }
         }
 
-        if (craftTab == 0) craftView.Draw();
-        else questView.Draw();
+        switch (craftTab)
+        {
+            case 0: craftView.Draw(); break;
+            case 1: recipeView.Draw(); break;
+            default: questView.Draw(); break;
+        }
     }
 
     // ---- Sidebar ------------------------------------------------------------------------------------

@@ -201,6 +201,12 @@ public sealed class JobStatusWindow : Window
     private void DrawDone(CraftJob job)
     {
         var o = job.Opportunity;
+        if (job.GatherOnly)
+        {
+            ImGui.TextColored(Theme.Good, job.Status);
+            if (ImGui.Button("Open the recipe")) plugin.ShowRecipe();
+            return;
+        }
         if (plugin.Scrips.Db?.Collectables.GetValueOrDefault(o.Item.Id) is { } collectable)
         {
             ImGui.TextColored(Theme.Good, $"Made {job.Made} of {job.Wanted}.");

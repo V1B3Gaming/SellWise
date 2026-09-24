@@ -91,7 +91,7 @@ public sealed class Plugin : IDalamudPlugin
         jobWindow = new JobStatusWindow(this);
         windows.AddWindow(jobWindow);
 
-        var info = new CommandInfo(OnCommand) { HelpMessage = "Open SellWise. \"/sellwise config\" opens settings, \"/sellwise city\" teleports to a random unlocked major city, \"/sellwise bell\" walks to the nearest summoning bell, \"/sellwise craft\" opens the profit finder, \"/sellwise quests\" opens job quests, \"/sellwise repair\" repairs your gear, \"/sellwise scrips\" opens scrip farming, \"/sellwise turnin\" turns in crafter collectables, \"/sellwise stop\" stops everything SellWise started." };
+        var info = new CommandInfo(OnCommand) { HelpMessage = "Open SellWise. \"/sellwise config\" opens settings, \"/sellwise city\" teleports to a random unlocked major city, \"/sellwise bell\" walks to the nearest summoning bell, \"/sellwise craft\" opens the profit finder, \"/sellwise recipe\" opens any-recipe crafting, \"/sellwise quests\" opens job quests, \"/sellwise repair\" repairs your gear, \"/sellwise scrips\" opens scrip farming, \"/sellwise turnin\" turns in crafter collectables, \"/sellwise stop\" stops everything SellWise started." };
         CommandManager.AddHandler(Command, info);
         CommandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand) { HelpMessage = "Alias for /sellwise.", ShowInHelp = false });
 
@@ -106,6 +106,7 @@ public sealed class Plugin : IDalamudPlugin
     public void ToggleConfig() => configWindow.Toggle();
     public void ShowCraft() => mainWindow.ShowCraftTab();
     public void ShowScrips() => mainWindow.ShowScripTab();
+    public void ShowRecipe() => mainWindow.ShowRecipeTab();
 
     /// <summary>A job has started: tuck the main window away and follow along in the small progress window.</summary>
     public void MinimizeToJob()
@@ -146,6 +147,9 @@ public sealed class Plugin : IDalamudPlugin
                 break;
             case "quests":
                 mainWindow.ShowQuestTab();
+                break;
+            case "recipe":
+                mainWindow.ShowRecipeTab();
                 break;
             case "turnin":
                 TurnIn.Start();
@@ -196,6 +200,12 @@ public sealed class Plugin : IDalamudPlugin
             // Scrip collectables: take them to the appraiser.
             if (Config.TurnInAfterScripJob && job.State == CraftJobState.Finished) TurnIn.Start();
             mainWindow.ShowScripTab();
+            return;
+        }
+
+        if (job.GatherOnly)
+        {
+            mainWindow.ShowRecipeTab();
             return;
         }
 

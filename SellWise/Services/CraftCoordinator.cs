@@ -37,6 +37,9 @@ public sealed class CraftJob
     /// </summary>
     public CraftOpportunity? ArtisanPlan { get; set; }
     public bool HandedOff { get; set; }
+
+    /// <summary>Stop once GatherBuddy has gathered everything; don't craft.</summary>
+    public bool GatherOnly { get; set; }
     public DateTime? ArtisanStartAtUtc { get; set; }
     public int StartCount { get; init; }
     public int TargetCount { get; init; }
@@ -108,6 +111,23 @@ public sealed class CraftCoordinator
 
     /// <summary>Jobs waiting to start after the current one.</summary>
     public int Queued => queue.Count;
+
+    /// <summary>
+    /// Has GatherBuddy gather (and pull from retainers) what a recipe needs, then stops it before any crafting.
+    /// Must be called on the framework thread.
+    /// </summary>
+    public string? StartGatherOnly(CraftOpportunity opp, int crafts, CraftOpportunity plan)
+    {
+        if (IsRunning) return "A craft job is already running.";
+        if (!VulcanAvailable) return "GatherBuddy Reborn isn't loaded.";
+        if (MissingForArtisan(plan, crafts).Count == 0) return "You already have everything for this.";
+
+        var error = Start(opp, crafts, CraftBackend.Vulcan);
+        if (error != null || Job == null) return error;
+        Job.ArtisanPlan = plan;
+        Job.GatherOnly = true;
+        return null;
+    }
 
     /// <summary>
     /// Runs several jobs one after another (each starts a few seconds after the last finishes). Stops the chain if
@@ -366,7 +386,7 @@ public sealed class CraftCoordinator
         if (missing.Count > 0)
         {
             if (midCraft)
-                job.Status = "GatherBuddy is crafting. SellWise couldn't hand this to Artisan: " +
+                job.Status = (job.GatherOnly ? "GatherBuddy started crafting before everything was gathered: " : "GatherBuddy is crafting. SellWise couldn't hand this to Artisan: ") +
                              string.Join(", ", missing.Take(3).Select(m => $"{m.Line.Name} x{m.Missing}")) + " isn't in your bags.";
             return;
         }
@@ -376,6 +396,15 @@ public sealed class CraftCoordinator
         {
             job.ArtisanPlan = null;
             job.Status = "Couldn't stop GatherBuddy to hand over to Artisan (its stop command is missing), so GatherBuddy will craft.";
+            return;
+        }
+
+        if (job.GatherOnly)
+        {
+            job.State = CraftJobState.Finished;
+            job.Status = "Everything's gathered. Craft it whenever you're ready.";
+            nextQueued = DateTime.UtcNow.AddSeconds(3);
+            Finished?.Invoke(job);
             return;
         }
 
