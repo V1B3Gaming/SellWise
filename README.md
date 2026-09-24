@@ -1,3 +1,5 @@
+<img src="SellWise/images/icon.png" width="96" align="right" alt="">
+
 # SellWise
 
 A Dalamud plugin (API 15) that looks at everything you own (bags, crystals, saddlebags, every retainer and their market listings), pulls live prices from [Universalis](https://universalis.app), and tells you what to **list, relist, vendor, or hold**, with a price to type in.

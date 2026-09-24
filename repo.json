@@ -8,6 +8,7 @@
     "Punchline": "Know what to sell, where, and for how much.",
     "ApplicableVersion": "any",
     "RepoUrl": "https://github.com/V1B3Gaming/SellWise",
+    "IconUrl": "https://raw.githubusercontent.com/V1B3Gaming/SellWise/main/SellWise/images/icon.png",
     "Tags": [ "market", "retainer", "universalis", "gil", "crafting" ],
     "DalamudApiLevel": 15,
     "LoadPriority": 0,

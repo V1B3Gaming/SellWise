@@ -10,4 +10,9 @@
     <!-- Addon clicking (repair window, yes/no, NPC menus) the same way GatherBuddy, Artisan and AutoDuty do it. -->
     <PackageReference Include="ECommons" Version="3.2.1.20" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Dalamud shows images/icon.png next to the DLL for dev builds; the repository uses IconUrl. -->
+    <None Include="images\icon.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

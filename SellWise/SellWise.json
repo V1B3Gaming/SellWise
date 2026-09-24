@@ -4,6 +4,7 @@
   "Punchline": "Know what to sell, where, and for how much.",
   "Description": "Scans your bags, saddlebags and retainers, pulls live prices from Universalis, and recommends what to list, relist, vendor or hold, with suggested prices. Finds profitable crafts you can make and hands them to GatherBuddy Reborn or Artisan to gather and craft.",
   "RepoUrl": "https://github.com/V1B3Gaming/SellWise",
+  "IconUrl": "https://raw.githubusercontent.com/V1B3Gaming/SellWise/main/SellWise/images/icon.png",
   "Tags": [ "market", "retainer", "universalis", "gil", "crafting" ],
   "ApplicableVersion": "any"
 }
