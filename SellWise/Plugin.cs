@@ -48,6 +48,7 @@ public sealed class Plugin : IDalamudPlugin
     public ScripService Scrips { get; }
     public ScripTracker ScripTracker { get; }
     public TurnInService TurnIn { get; }
+    public JobQuestService JobQuests { get; }
 
     private readonly WindowSystem windows = new("SellWise");
     private readonly MainWindow mainWindow;
@@ -78,6 +79,7 @@ public sealed class Plugin : IDalamudPlugin
         ScripTracker = new ScripTracker(Config, Tracker, () => Scrips.Db);
         TurnIn = new TurnInService(Teleporter, () => Scrips.Db);
         Scrips.EnsureLoaded();
+        JobQuests = new JobQuestService(Scanner, Market, Tracker);
         Theme.SetAccent(Config.Accent);
         Theme.InitFonts(PluginInterface.UiBuilder);
         Crafter.Finished += OnCraftFinished;
@@ -89,7 +91,7 @@ public sealed class Plugin : IDalamudPlugin
         jobWindow = new JobStatusWindow(this);
         windows.AddWindow(jobWindow);
 
-        var info = new CommandInfo(OnCommand) { HelpMessage = "Open SellWise. \"/sellwise config\" opens settings, \"/sellwise city\" teleports to a random unlocked major city, \"/sellwise bell\" walks to the nearest summoning bell, \"/sellwise craft\" opens the profit finder, \"/sellwise repair\" repairs your gear, \"/sellwise scrips\" opens scrip farming, \"/sellwise turnin\" turns in crafter collectables, \"/sellwise stop\" stops everything SellWise started." };
+        var info = new CommandInfo(OnCommand) { HelpMessage = "Open SellWise. \"/sellwise config\" opens settings, \"/sellwise city\" teleports to a random unlocked major city, \"/sellwise bell\" walks to the nearest summoning bell, \"/sellwise craft\" opens the profit finder, \"/sellwise quests\" opens job quests, \"/sellwise repair\" repairs your gear, \"/sellwise scrips\" opens scrip farming, \"/sellwise turnin\" turns in crafter collectables, \"/sellwise stop\" stops everything SellWise started." };
         CommandManager.AddHandler(Command, info);
         CommandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand) { HelpMessage = "Alias for /sellwise.", ShowInHelp = false });
 
@@ -142,6 +144,9 @@ public sealed class Plugin : IDalamudPlugin
             case "scrips":
                 mainWindow.ShowScripTab();
                 break;
+            case "quests":
+                mainWindow.ShowQuestTab();
+                break;
             case "turnin":
                 TurnIn.Start();
                 break;
@@ -167,6 +172,7 @@ public sealed class Plugin : IDalamudPlugin
         Crafter.Update();
         TurnIn.Update();
         ScripTracker.Update();
+        JobQuests.Update();
 
         // Pop the status window up when a new job starts, and bring SellWise back if it fails.
         if (Crafter.Job != lastJob)
@@ -183,6 +189,8 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnCraftFinished(CraftJob job)
     {
+        if (Crafter.Queued > 0) return; // more queued: carry on without popping SellWise back up
+
         if (job.Opportunity.Recipe.CollectableQuality != null)
         {
             // Scrip collectables: take them to the appraiser.

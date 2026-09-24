@@ -30,6 +30,8 @@ public sealed class MainWindow : Window
     private readonly Plugin plugin;
     private readonly CraftView craftView;
     private readonly ScripView scripView;
+    private readonly JobQuestView questView;
+    private int craftTab;
     private IDisposable? theme;
     private IDisposable? edgeToEdge;
     private View view = View.Sell;
@@ -45,6 +47,7 @@ public sealed class MainWindow : Window
         this.plugin = plugin;
         craftView = new CraftView(plugin);
         scripView = new ScripView(plugin, craftView);
+        questView = new JobQuestView(plugin, craftView);
         Size = new Vector2(1180, 720);
         SizeCondition = ImGuiCond.FirstUseEver;
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(900, 560), MaximumSize = new Vector2(float.MaxValue, float.MaxValue) };
@@ -56,6 +59,14 @@ public sealed class MainWindow : Window
     {
         IsOpen = true;
         view = View.Craft;
+        craftTab = 0;
+    }
+
+    public void ShowQuestTab()
+    {
+        IsOpen = true;
+        view = View.Craft;
+        craftTab = 1;
     }
 
     public void ShowScripTab()
@@ -101,10 +112,37 @@ public sealed class MainWindow : Window
         {
             case View.Sell: DrawSell(); break;
             case View.Listings: DrawListings(); break;
-            case View.Craft: craftView.Draw(); break;
+            case View.Craft: DrawCraftSection(); break;
             case View.Scrips: scripView.Draw(); break;
             case View.Retainers: DrawRetainers(); break;
         }
+    }
+
+    // ---- Craft section: for profit / job quests -----------------------------------------------------
+
+    private static readonly string[] CraftTabs = ["For profit", "Job quests"];
+
+    private void DrawCraftSection()
+    {
+        using (ImRaii.PushColor(ImGuiCol.ChildBg, Theme.Bg0))
+        using (var strip = ImRaii.Child("##craftTabs", new Vector2(0, 40), false, ImGuiWindowFlags.NoScrollbar))
+        {
+            if (strip)
+            {
+                ImGui.SetCursorPos(new Vector2(12, 6));
+                for (var i = 0; i < CraftTabs.Length; i++)
+                {
+                    if (i > 0) ImGui.SameLine(0, 6);
+                    var active = craftTab == i;
+                    using var col = ImRaii.PushColor(ImGuiCol.Button, active ? Theme.Current.Selected : Theme.Bg0)
+                        .Push(ImGuiCol.Text, active ? Theme.Text : Theme.Text2);
+                    if (ImGui.Button(CraftTabs[i], new Vector2(0, 28))) craftTab = i;
+                }
+            }
+        }
+
+        if (craftTab == 0) craftView.Draw();
+        else questView.Draw();
     }
 
     // ---- Sidebar ------------------------------------------------------------------------------------

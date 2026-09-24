@@ -77,6 +77,8 @@ public sealed class CraftCoordinator
     private readonly ICallGateSubscriber<bool> gbrAutoGatherEnabled;
     private DateTime nextPoll = DateTime.MinValue;
     private DateTime nextHandoffCheck = DateTime.MinValue;
+    private readonly Queue<(CraftOpportunity Opp, int Crafts, CraftBackend Backend, CraftOpportunity? Plan)> queue = new();
+    private DateTime nextQueued;
 
     public CraftJob? Job { get; private set; }
 
@@ -103,6 +105,24 @@ public sealed class CraftCoordinator
         => Plugin.PluginInterface.InstalledPlugins.Any(p => p.InternalName == internalName && p.IsLoaded);
 
     public bool IsRunning => Job is { State: CraftJobState.Running };
+
+    /// <summary>Jobs waiting to start after the current one.</summary>
+    public int Queued => queue.Count;
+
+    /// <summary>
+    /// Runs several jobs one after another (each starts a few seconds after the last finishes). Stops the chain if
+    /// one fails or you press Stop. Must be called on the framework thread.
+    /// </summary>
+    public string? StartAll(IReadOnlyList<(CraftOpportunity Opp, int Crafts, CraftBackend Backend, CraftOpportunity? Plan)> jobs)
+    {
+        if (IsRunning) return "A craft job is already running.";
+        if (jobs.Count == 0) return "Nothing to make.";
+        var error = Start(jobs[0].Opp, jobs[0].Crafts, jobs[0].Backend, jobs[0].Plan);
+        if (error != null) return error;
+        queue.Clear();
+        foreach (var job in jobs.Skip(1)) queue.Enqueue(job);
+        return null;
+    }
 
     /// <summary>Materials Artisan would need in your bags that you don't have (item, missing amount).</summary>
     public List<(MaterialLine Line, int Missing)> MissingForArtisan(CraftOpportunity opp, int crafts)
@@ -212,6 +232,7 @@ public sealed class CraftCoordinator
             Plugin.Log.Warning(e, "Stop request failed");
         }
 
+        queue.Clear();
         job.State = CraftJobState.Stopped;
         job.Status = job.Backend == CraftBackend.Artisan ? "Asked Artisan to stop."
             : stoppedVulcan ? "Stopped GatherBuddy."
@@ -223,6 +244,7 @@ public sealed class CraftCoordinator
         if (Job is not { } job) return;
         job.State = CraftJobState.Finished;
         job.Status = "Marked as finished.";
+        nextQueued = DateTime.UtcNow.AddSeconds(3);
         Finished?.Invoke(job);
     }
 
@@ -234,8 +256,20 @@ public sealed class CraftCoordinator
     /// <summary>Called from Framework.Update.</summary>
     public void Update()
     {
-        if (Job is not { State: CraftJobState.Running } job) return;
         var now = DateTime.UtcNow;
+        if (Job is null or { State: CraftJobState.Finished } && queue.Count > 0 && now >= nextQueued)
+        {
+            var (opp, crafts, backend, plan) = queue.Dequeue();
+            Job = null;
+            if (Start(opp, crafts, backend, plan) is { } error)
+            {
+                queue.Clear();
+                Plugin.Log.Warning($"[SellWise] Queued job for {opp.Item.Name} didn't start: {error}");
+            }
+            return;
+        }
+        if (Job is { State: CraftJobState.Failed or CraftJobState.Stopped }) queue.Clear();
+        if (Job is not { State: CraftJobState.Running } job) return;
 
         // Checked more often than the rest: GatherBuddy starts crafting a few seconds after its gathering ends.
         if (job is { Backend: CraftBackend.Vulcan, ArtisanPlan: not null, HandedOff: false, WaitingForRepair: false } && now >= nextHandoffCheck)
@@ -287,6 +321,7 @@ public sealed class CraftCoordinator
         {
             job.State = CraftJobState.Finished;
             job.Status = $"Done: made {job.Made}.";
+            nextQueued = DateTime.UtcNow.AddSeconds(3);
             Finished?.Invoke(job);
             return;
         }
@@ -393,6 +428,7 @@ public sealed class CraftCoordinator
         {
             job.State = CraftJobState.Finished;
             job.Status = job.Made >= job.Wanted ? $"Done: made {job.Made}." : $"Artisan stopped after making {job.Made} of {job.Wanted}.";
+            nextQueued = DateTime.UtcNow.AddSeconds(3);
             Finished?.Invoke(job);
             return;
         }

@@ -73,6 +73,14 @@ When it's done, SellWise pulls a fresh price so you know what to list at.
 
 Once you press start, the main window tucks itself away and a small **SellWise progress** window takes over. It comes back by itself when the job's done (or if it fails), or whenever you click **Open SellWise**. While it's gathering, the progress window lists every material with a meter that fills as it lands in your bags, how long each will take (or when a timed node next spawns), and your GP. Once everything's gathered it switches to a crafting meter with time left, and when it's finished it shows the price to list at. Tick **Use cordials when ready** there and SellWise drinks the biggest cordial that won't waste GP whenever the cooldown's up, between nodes.
 
+### Job quests
+
+The Craft section has a second tab, **Job quests**, for crafter and gatherer quests that need items handed in.
+
+- **Where you stand:** every quest shows whether it's in your journal, ready to pick up, locked (and why: the level you need or the quest to finish first) or done. By default it lists the ones you can do now.
+- **What to hand in:** each item, how many, and whether it has to be high quality, with how many you already have. The game data says which items a quest takes but not how many, so SellWise reads the count from the quest's journal text; where the text doesn't say, it shows "?" and you set the number. Special materials the quest hands you are marked as such.
+- **Making it:** **Make** crafts one item, **Make all** does everything the quest still needs, and **Make everything** at the top does it for every quest you can do now, one job after another (GatherBuddy gathers, Artisan crafts). Items you only gather have a **Gather** button that sends you to the node with GatherBuddy.
+
 ## Scrips
 
 The **Scrips** tab is for farming purple and orange crafters' scrips.
@@ -97,6 +105,7 @@ SellWise doesn't buy anything at the scrip exchange. You do the buying; it keeps
 |---|---|
 | `/sw` | Open SellWise (`/sellwise` works too) |
 | `/sw craft` | Jump to Craft for profit |
+| `/sw quests` | Jump to Job quests |
 | `/sw scrips` | Jump to Scrips |
 | `/sw turnin` | Take your crafter collectables to an appraiser and turn them in |
 | `/sw refresh` | Refresh prices |

@@ -156,6 +156,10 @@ public sealed unsafe class InventoryTracker : IDisposable
     public int CountInBags(uint itemId)
         => playerStacks.Where(s => s.ItemId == itemId && s.Source is StackSource.Bag or StackSource.Crystals).Sum(s => s.Quantity);
 
+    /// <summary>Units in your bags, only high quality ones when <paramref name="hqOnly"/>.</summary>
+    public int CountInBags(uint itemId, bool hqOnly)
+        => hqOnly ? playerStacks.Where(s => s.ItemId == itemId && s.Hq && s.Source == StackSource.Bag).Sum(s => s.Quantity) : CountInBags(itemId);
+
     /// <summary>Units held by your retainers as of their last scan.</summary>
     public int CountOnRetainers(uint itemId)
         => Character?.Retainers.Values.Sum(r => r.Items.Where(s => s.ItemId == itemId).Sum(s => s.Quantity)) ?? 0;
