@@ -118,14 +118,6 @@ dotnet test SellWise.Tests
 ```
 Set `SELLWISE_LIVE=1` to also run the tests that call the real Universalis API.
 
-## Releasing
-
-Push a version tag and GitHub Actions builds against the current Dalamud release, runs the tests, attaches `latest.zip` to a GitHub release, and bumps `repo.json` so Dalamud offers the update:
-```
-git tag v0.2.0
-git push origin v0.2.0
-```
-
 ## Good to know
 
 - SellWise is **advisory for selling**. It never lists, buys or reprices on the market board.
@@ -136,3 +128,7 @@ git push origin v0.2.0
 ## Credits
 
 Market data by [Universalis](https://universalis.app). Crafting formulas follow the [Teamcraft simulator](https://github.com/ffxiv-teamcraft/simulator). FINAL FANTASY XIV © SQUARE ENIX CO., LTD. SellWise is a fan-made tool and is not affiliated with Square Enix.
+
+## AI-generated code
+
+SellWise's code, tests, icon and the screenshot renders in this README were written with an AI assistant (Anthropic's Claude), directed and reviewed by the project owner. The logic is covered by automated tests, but parts that drive the game (repairs, window clicks, teleports and crafting hand-offs) have had limited in-game testing. Treat it accordingly, and please open an issue if something misbehaves.
