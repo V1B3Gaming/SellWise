@@ -22,7 +22,7 @@ public sealed class JobStatusWindow : Window
     private IDisposable? theme;
 
     public JobStatusWindow(Plugin plugin)
-        : base("Crafting status###SellWiseJob", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoScrollbar)
+        : base("SellWise progress###SellWiseJob", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoScrollbar)
     {
         this.plugin = plugin;
     }
@@ -43,7 +43,7 @@ public sealed class JobStatusWindow : Window
         if (plugin.Crafter.Job is not { } job) return;
 
         var o = job.Opportunity;
-        var estimate = plugin.Estimator.Estimate(o, job.Crafts, job.Made);
+        var estimate = plugin.Estimator.Estimate(o, job.Crafts, job.Made, job.Backend);
         var phase = JobEstimator.Phase(job, estimate);
 
         ImGui.Dummy(new Vector2(Width, 0)); // fixes the window's width
@@ -105,7 +105,7 @@ public sealed class JobStatusWindow : Window
     private void DrawGathering(JobTimeEstimate estimate)
     {
         var left = estimate.Materials.Where(m => !m.Done).ToList();
-        ImGui.TextUnformatted($"About {TimeEstimator.Format(estimate.Gather)} of gathering left");
+        ImGui.TextUnformatted(estimate.Gather > TimeSpan.Zero ? $"About {TimeEstimator.Format(estimate.Gather)} of gathering left" : "Nothing left to gather");
         ImGui.SameLine();
         Theme.Muted($"then ~{TimeEstimator.Format(estimate.Craft)} crafting");
         if (plugin.Crafter.Job?.Status is { Length: > 0 } status) Theme.Wrapped(status, Theme.Text3);
@@ -139,6 +139,8 @@ public sealed class JobStatusWindow : Window
         }
 
         if (left.Count == 0) Theme.Muted("Everything's gathered.");
+        if (estimate.Materials.Any(m => !m.Done && m.Line.Source is MaterialSource.Buy or MaterialSource.Vendor && m.Have + m.OnRetainers < m.Need))
+            Theme.Wrapped("Items marked buy or NPC aren't gathered; GatherBuddy buys what it can from vendors, the rest you'll need to pick up.", Theme.Text3);
 
         // Cordials: optional, off by default.
         ImGui.Spacing();

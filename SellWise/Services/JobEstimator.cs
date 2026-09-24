@@ -43,13 +43,20 @@ public sealed class JobEstimator
     /// <summary>
     /// Estimate for making <paramref name="crafts"/> crafts, <paramref name="made"/> of which are already done.
     /// Retainer stock counts towards gathering (Vulcan pulls it) but not towards what's in your bags.
+    /// <para>
+    /// For GatherBuddy's Vulcan (the default route) the materials follow what Vulcan actually does, which isn't
+    /// SellWise's cheapest-cost plan: Vulcan crafts every ingredient that has a recipe, gathers what's gatherable,
+    /// and only buys the rest. Artisan jobs follow SellWise's plan, since you supply those materials yourself.
+    /// </para>
     /// </summary>
-    public JobTimeEstimate Estimate(CraftOpportunity o, int crafts, int made = 0)
+    public JobTimeEstimate Estimate(CraftOpportunity o, int crafts, int made = 0, CraftBackend backend = CraftBackend.Vulcan)
     {
         var tracker = plugin.Tracker;
         var db = plugin.Scanner.Db;
         var now = DateTimeOffset.UtcNow;
         var left = Math.Max(0, crafts - made);
+        var lines = backend == CraftBackend.Vulcan && db != null ? VulcanRoute(o.Recipe, db) : o.Materials;
+        var needs = ScaledNeeds(lines, left);
 
         MaterialProgress Progress(MaterialLine line, double needed)
         {
@@ -62,15 +69,16 @@ public sealed class JobEstimator
             return new MaterialProgress(line, plugin.Catalog.Get(line.ItemId), need, have, retainers, gather);
         }
 
-        var materials = o.Materials.Where(m => m.Source != MaterialSource.Craft)
-            .GroupBy(m => m.ItemId)
-            .Select(g => Progress(g.First(), g.Sum(m => m.AmountPerCraft) * left))
+        var materials = needs.Where(x => x.Line.Source != MaterialSource.Craft && x.Need > 0)
+            .GroupBy(x => x.Line.ItemId)
+            .Select(g => Progress(g.First().Line, g.Sum(x => x.Need)))
             .OrderBy(p => p.Done)
             .ThenBy(p => p.Line.Source)
             .ToList();
 
-        var parts = o.Materials.Where(m => m.Source == MaterialSource.Craft)
-            .Select(m => Progress(m, m.AmountPerCraft * left))
+        var parts = needs.Where(x => x.Line.Source == MaterialSource.Craft && x.Need > 0)
+            .GroupBy(x => x.Line.ItemId)
+            .Select(g => Progress(g.First().Line, g.Sum(x => x.Need)))
             .ToList();
 
         // Timed nodes mostly mean waiting, and regular gathering can happen during the wait.
@@ -91,17 +99,78 @@ public sealed class JobEstimator
         return new JobTimeEstimate(gatherTime, craftTime, materials, parts, actions);
     }
 
-    /// <summary>Which phase a running job is in, judged from what's in the bags.</summary>
+    /// <summary>
+    /// Which phase a running job is in, judged from what's in the bags. Only gatherable materials hold the job in
+    /// the gathering phase; things that have to be bought are listed but don't block it.
+    /// </summary>
     public static JobPhase Phase(CraftJob job, JobTimeEstimate estimate) => job.State switch
     {
         CraftJobState.Finished => JobPhase.Done,
         CraftJobState.Stopped => JobPhase.Stopped,
         CraftJobState.Failed => JobPhase.Failed,
         _ when job.WaitingForRepair => JobPhase.Repairing,
-        _ when job.Made == 0 && estimate.Materials.Any(m => !m.Done) => JobPhase.Gathering,
+        _ when job.Made == 0 && estimate.Materials.Any(m => m.Line.Source == MaterialSource.Gather && m.Have + m.OnRetainers < m.Need) => JobPhase.Gathering,
         _ when job.Made == 0 && estimate.Parts.Any(p => !p.Done) => JobPhase.CraftingParts,
         _ => JobPhase.Crafting,
     };
+
+    /// <summary>
+    /// The material tree the way GatherBuddy's Vulcan works it out: gatherable → gather, else has a recipe → craft
+    /// it (and recurse into its ingredients), else NPC vendor, else buy. Amounts are per craft of the final recipe.
+    /// </summary>
+    private List<MaterialLine> VulcanRoute(RecipeInfo recipe, RecipeDb db)
+    {
+        var lines = new List<MaterialLine>();
+        void Walk(RecipeInfo r, double craftsPerFinal, int depth, HashSet<uint> path)
+        {
+            foreach (var ing in r.Ingredients)
+            {
+                var amount = craftsPerFinal * ing.Amount;
+                var name = plugin.Catalog.Get(ing.ItemId)?.Name ?? $"Item {ing.ItemId}";
+                if (db.Gatherable.Contains(ing.ItemId))
+                {
+                    lines.Add(new MaterialLine(ing.ItemId, name, amount, MaterialSource.Gather, 0, 0, depth));
+                }
+                else if (depth < 6 && !path.Contains(ing.ItemId) && db.ByResult.TryGetValue(ing.ItemId, out var sub))
+                {
+                    lines.Add(new MaterialLine(ing.ItemId, name, amount, MaterialSource.Craft, 0, 0, depth, sub.RecipeId, sub.Yield));
+                    Walk(sub, amount / Math.Max(1, sub.Yield), depth + 1, [.. path, ing.ItemId]);
+                }
+                else
+                {
+                    lines.Add(new MaterialLine(ing.ItemId, name, amount,
+                        db.VendorSold.Contains(ing.ItemId) ? MaterialSource.Vendor : MaterialSource.Buy, 0, 0, depth));
+                }
+            }
+        }
+
+        Walk(recipe, 1, 0, [recipe.ResultItemId]);
+        return lines;
+    }
+
+    /// <summary>
+    /// How much of each line is still needed. Lines are parent-first, so intermediates you already hold reduce
+    /// (or remove) the need for their own ingredients.
+    /// </summary>
+    private List<(MaterialLine Line, int Need)> ScaledNeeds(IReadOnlyList<MaterialLine> lines, int crafts)
+    {
+        var tracker = plugin.Tracker;
+        var factors = new double[16];
+        factors[0] = 1;
+        var result = new List<(MaterialLine, int)>();
+        foreach (var m in lines)
+        {
+            if (m.Depth >= factors.Length - 1) continue;
+            var need = m.AmountPerCraft * crafts * factors[m.Depth];
+            if (m.Source == MaterialSource.Craft)
+            {
+                var held = tracker.CountInBags(m.ItemId) + tracker.CountOnRetainers(m.ItemId);
+                factors[m.Depth + 1] = need > 0 ? factors[m.Depth] * Math.Max(0, need - held) / need : 0;
+            }
+            result.Add((m, (int)Math.Ceiling(need - 1e-9)));
+        }
+        return result;
+    }
 
     /// <summary>A short "when" for one material: "3m", "spawns in 12m", "up now", "buy", "done".</summary>
     public static string When(MaterialProgress m)

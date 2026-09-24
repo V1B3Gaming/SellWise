@@ -49,6 +49,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly ConfigWindow configWindow;
     private readonly JobStatusWindow jobWindow;
     private CraftJob? lastJob;
+    private CraftJobState? lastJobState;
     private IDtrBarEntry? dtrEntry;
 
     public Plugin()
@@ -92,6 +93,13 @@ public sealed class Plugin : IDalamudPlugin
     public void ToggleMain() => mainWindow.Toggle();
     public void ToggleConfig() => configWindow.Toggle();
     public void ShowCraft() => mainWindow.ShowCraftTab();
+
+    /// <summary>A job has started: tuck the main window away and follow along in the small progress window.</summary>
+    public void MinimizeToJob()
+    {
+        mainWindow.IsOpen = false;
+        jobWindow.IsOpen = true;
+    }
 
     private void OnCommand(string command, string args)
     {
@@ -140,12 +148,15 @@ public sealed class Plugin : IDalamudPlugin
         Quality.Update();
         Crafter.Update();
 
-        // Pop the status window up when a new job starts.
+        // Pop the status window up when a new job starts, and bring SellWise back if it fails.
         if (Crafter.Job != lastJob)
         {
             lastJob = Crafter.Job;
             if (lastJob != null && Config.ShowJobWindow) jobWindow.IsOpen = true;
         }
+        var state = Crafter.Job?.State;
+        if (state == CraftJobState.Failed && lastJobState != CraftJobState.Failed) mainWindow.ShowCraftTab();
+        lastJobState = state;
         Cordials.Update(Crafter.IsRunning && !(Crafter.Job?.WaitingForRepair ?? false));
         UpdateDtr();
     }
@@ -154,7 +165,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         // Price what was just made right away, rather than waiting for the next auto refresh.
         Advice.RefreshItem(job.Opportunity.Item.Id);
-        mainWindow.IsOpen = true;
+        mainWindow.ShowCraftTab();
     }
 
     private void UpdateDtr()

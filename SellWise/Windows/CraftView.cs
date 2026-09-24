@@ -17,6 +17,13 @@ public sealed class CraftView
     private const float ListWidth = 430;
     private const float RowHeight = 58;
     private static readonly string[] Sorts = ["Batch profit", "Profit per craft", "Cash profit per craft", "Sold per day", "Market gil per day"];
+    private static readonly string[] Modes = ["Gather & craft", "Cheapest mix", "Buy everything"];
+    private static readonly string[] ModeHelp =
+    [
+        "Gather what's gatherable and craft every part yourself, the way GatherBuddy does it. Spends the least gil.",
+        "Buy from the market or an NPC wherever that's cheaper than making it; gather the rest.",
+        "Buy everything that's listed on the market board. Quickest, and costs the most.",
+    ];
 
     private readonly Plugin plugin;
     private string search = "";
@@ -26,6 +33,11 @@ public sealed class CraftView
     private uint selectedRecipe;
     private int quantity = 1;
     private string? startError;
+
+    // Your own pick of source for particular materials, per recipe (recipe id -> item id -> source).
+    private readonly Dictionary<uint, Dictionary<uint, MaterialSource>> picks = [];
+    private int picksVersion;
+    private (CraftOpportunity Base, int Version, CraftOpportunity Priced)? priced;
 
     public CraftView(Plugin plugin) => this.plugin = plugin;
 
@@ -70,7 +82,25 @@ public sealed class CraftView
             return;
         }
 
-        DrawDetail(selected);
+        DrawDetail(Priced(selected));
+    }
+
+    /// <summary>The recipe costed with any materials you've picked a different source for.</summary>
+    private CraftOpportunity Priced(CraftOpportunity o)
+    {
+        if (!picks.TryGetValue(o.Recipe.RecipeId, out var mine) || mine.Count == 0) return o;
+        if (priced is { } p && ReferenceEquals(p.Base, o) && p.Version == picksVersion) return p.Priced;
+        var result = plugin.Scanner.Reprice(o, mine);
+        priced = (o, picksVersion, result);
+        return result;
+    }
+
+    private void Pick(uint recipeId, uint itemId, MaterialSource? source)
+    {
+        if (!picks.TryGetValue(recipeId, out var mine)) picks[recipeId] = mine = [];
+        if (source is { } s) mine[itemId] = s;
+        else mine.Remove(itemId);
+        picksVersion++;
     }
 
     private static ImRaii.ChildDisposable Pane(string id, Vector2 size)
@@ -232,14 +262,65 @@ public sealed class CraftView
 
         DrawQualityCheck(o);
         ImGui.Spacing();
+        DrawMaterialMode(o);
+        ImGui.Spacing();
 
-        // Leave room for the action bar at the bottom.
-        var barHeight = ImGui.GetFrameHeight() + 20;
+        // Leave room for the action bar (and the buy-first note) at the bottom.
+        var toBuy = ToBuy(o);
+        var barHeight = ImGui.GetFrameHeight() + 20 + (toBuy.Count > 0 ? ImGui.GetTextLineHeightWithSpacing() * 2 : 0);
         using (var mats = ImRaii.Child("##mats", new Vector2(0, ImGui.GetContentRegionAvail().Y - barHeight)))
         {
             if (mats) DrawMaterials(o);
         }
-        DrawActionBar(o);
+        DrawActionBar(o, toBuy);
+    }
+
+    /// <summary>How to get the materials: your choice, not SellWise's.</summary>
+    private void DrawMaterialMode(CraftOpportunity o)
+    {
+        ImGui.AlignTextToFramePadding();
+        Theme.Secondary("Get materials");
+        ImGui.SameLine();
+        var mode = (int)Config.Craft.MaterialMode;
+        ImGui.SetNextItemWidth(150);
+        if (ImGui.Combo("##matmode", ref mode, Modes, Modes.Length))
+        {
+            Config.Craft.MaterialMode = (MaterialMode)mode;
+            Config.Save();
+            plugin.Scanner.Recalculate();
+            picksVersion++;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(string.Join("\n", Modes.Select((m, i) => $"{m}: {ModeHelp[i]}")) +
+                             "\n\nProfit, materials and time all follow your choice. Click a material's tag to change just that one.");
+
+        var mine = picks.GetValueOrDefault(o.Recipe.RecipeId);
+        if (mine is { Count: > 0 })
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton($"Reset {mine.Count} pick{(mine.Count == 1 ? "" : "s")}"))
+            {
+                mine.Clear();
+                picksVersion++;
+            }
+        }
+        ImGui.SameLine();
+        ImGui.AlignTextToFramePadding();
+        Theme.Muted(Theme.Fit(ModeHelp[mode], ImGui.GetContentRegionAvail().X));
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(ModeHelp[mode]);
+    }
+
+    /// <summary>Materials planned as bought (market or NPC) that aren't in your bags or on retainers yet.</summary>
+    private List<(MaterialLine Line, int Missing)> ToBuy(CraftOpportunity o)
+    {
+        var list = new List<(MaterialLine, int)>();
+        foreach (var g in o.Materials.Where(m => m.Source is MaterialSource.Buy or MaterialSource.Vendor).GroupBy(m => m.ItemId))
+        {
+            var need = (int)Math.Ceiling(g.Sum(m => m.AmountPerCraft) * quantity);
+            var missing = need - plugin.Tracker.CountInBags(g.Key) - plugin.Tracker.CountOnRetainers(g.Key);
+            if (missing > 0) list.Add((g.First(), missing));
+        }
+        return list;
     }
 
     private void DrawQualityCheck(CraftOpportunity o)
@@ -344,12 +425,13 @@ public sealed class CraftView
     private void DrawMaterials(CraftOpportunity o)
     {
         Theme.Secondary($"Materials for {quantity} craft{(quantity == 1 ? "" : "s")}");
-        var estimate = plugin.Estimator.Estimate(o, quantity);
+        var estimate = plugin.Estimator.Estimate(o, quantity, 0, CraftBackend.Artisan); // follows the plan below
         var timing = estimate.Materials.ToDictionary(m => m.Line.ItemId);
         ImGui.SameLine();
         Theme.Muted(Theme.Fit($"· about {TimeEstimator.Format(estimate.Gather)} gathering + {TimeEstimator.Format(estimate.Craft)} crafting", ImGui.GetContentRegionAvail().X));
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Rough estimate: ~40s per node visit and a minute of travel per material, plus waiting for\n" +
+            ImGui.SetTooltip("Rough estimate for the plan below (what you gather and what you craft):\n" +
+                             "~40s per node visit and a minute of travel per material, plus waiting for\n" +
                              "timed nodes to spawn; crafting at ~3s per action. Retainer stock counts as already gathered.");
         var tracker = plugin.Tracker;
         var i = 0;
@@ -392,6 +474,13 @@ public sealed class CraftView
                 _ => ("Unknown", Theme.Bad),
             };
             Theme.Tag(src, srcColor, small: true);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+                ImGui.SetTooltip("Click to choose how to get this.");
+            }
+            if (ImGui.IsItemClicked()) ImGui.OpenPopup($"##src{i}");
+            DrawSourcePopup(o, m, i);
 
             ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - 255);
             var fraction = need > 0 ? bags / (float)need : 1;
@@ -420,9 +509,44 @@ public sealed class CraftView
         }
     }
 
-    private void DrawActionBar(CraftOpportunity o)
+    private void DrawSourcePopup(CraftOpportunity o, MaterialLine m, int i)
+    {
+        using var popup = ImRaii.Popup($"##src{i}");
+        if (!popup) return;
+
+        Theme.Secondary(Theme.Fit(m.Name, 260));
+        var picked = picks.GetValueOrDefault(o.Recipe.RecipeId)?.ContainsKey(m.ItemId) ?? false;
+        foreach (var c in plugin.Scanner.Choices(m.ItemId))
+        {
+            var label = c.Source switch
+            {
+                MaterialSource.Gather => $"Gather it (free, worth {c.Value:N0} each)",
+                MaterialSource.Craft => $"Craft it ({c.Cash:N0} gil each in materials)",
+                MaterialSource.Buy => $"Buy on the market ({c.Cash:N0} each)",
+                MaterialSource.Vendor => $"Buy from an NPC ({c.Cash:N0} each)",
+                _ => c.Source.ToString(),
+            };
+            if (ImGui.Selectable(label, m.Source == c.Source)) Pick(o.Recipe.RecipeId, m.ItemId, c.Source);
+        }
+        if (picked)
+        {
+            ImGui.Separator();
+            if (ImGui.Selectable($"Follow \"{Modes[(int)Config.Craft.MaterialMode]}\"")) Pick(o.Recipe.RecipeId, m.ItemId, null);
+        }
+    }
+
+    private void DrawActionBar(CraftOpportunity o, List<(MaterialLine Line, int Missing)> toBuy)
     {
         var crafter = plugin.Crafter;
+        if (toBuy.Count > 0)
+        {
+            var list = string.Join(", ", toBuy.Select(b => $"{b.Line.Name} x{b.Missing}"));
+            ImGui.TextColored(Theme.Hold, Theme.Fit($"Buy first: {list}", ImGui.GetContentRegionAvail().X));
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("You planned to buy these:\n" + string.Join("\n", toBuy.Select(b =>
+                    $"  {b.Line.Name} x{b.Missing} ({(b.Line.Source == MaterialSource.Vendor ? "NPC" : "market")})")));
+            Theme.Muted(Theme.Fit("SellWise never buys for you. Anything not in your bags, GatherBuddy gathers or crafts instead.", ImGui.GetContentRegionAvail().X));
+        }
         ImGui.Separator();
         ImGui.AlignTextToFramePadding();
         Theme.Secondary("Crafts");
@@ -448,7 +572,7 @@ public sealed class CraftView
 
         using (ImRaii.Disabled(crafter.IsRunning || !o.Unlocked || !CraftCoordinator.ArtisanAvailable || missing.Count > 0))
         {
-            if (ImGui.Button(artisanLabel)) startError = crafter.Start(o, quantity, CraftBackend.Artisan);
+            if (ImGui.Button(artisanLabel) && (startError = crafter.Start(o, quantity, CraftBackend.Artisan)) == null) plugin.MinimizeToJob();
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(!CraftCoordinator.ArtisanAvailable ? "Install and enable Artisan to use this."
@@ -458,7 +582,7 @@ public sealed class CraftView
         ImGui.SameLine();
         using (ImRaii.Disabled(crafter.IsRunning || !o.Unlocked || !CraftCoordinator.VulcanAvailable))
         {
-            if (Theme.PrimaryButton(gatherLabel)) startError = crafter.Start(o, quantity, CraftBackend.Vulcan);
+            if (Theme.PrimaryButton(gatherLabel) && (startError = crafter.Start(o, quantity, CraftBackend.Vulcan)) == null) plugin.MinimizeToJob();
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(CraftCoordinator.VulcanAvailable
@@ -508,7 +632,7 @@ public sealed class CraftView
         ImGui.Spacing();
         using (ImRaii.PushColor(ImGuiCol.FrameBg, Theme.Raise2))
             ImGui.ProgressBar(job.Wanted > 0 ? Math.Clamp(job.Made / (float)job.Wanted, 0, 1) : 0, new Vector2(-1, 22), Theme.Fit(job.Status, ImGui.GetContentRegionAvail().X - 20));
-        var estimate = plugin.Estimator.Estimate(o, job.Crafts, job.Made);
+        var estimate = plugin.Estimator.Estimate(o, job.Crafts, job.Made, job.Backend);
         Theme.Wrapped($"About {TimeEstimator.Format(estimate.Total)} left: {TimeEstimator.Format(estimate.Gather)} gathering, {TimeEstimator.Format(estimate.Craft)} crafting", Theme.Text3);
         ImGui.Spacing();
 

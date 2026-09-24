@@ -5,8 +5,9 @@ using System.Linq;
 namespace SellWise.Core;
 
 /// <summary>
-/// Works out what a recipe costs to make and what it earns. Each material is costed at the cheapest of
-/// gathering, NPC vendor, market board, or crafting it (recursively, up to a depth limit).
+/// Works out what a recipe costs to make and what it earns. Every way of getting each material is costed
+/// (gathering, NPC vendor, market board, crafting it, recursively), and the one used follows the player's
+/// <see cref="MaterialMode"/> or a per-material override.
 /// </summary>
 public sealed class ProfitCalculator
 {
@@ -17,6 +18,7 @@ public sealed class ProfitCalculator
     private readonly IReadOnlySet<uint> vendorSold;
     private readonly CraftSettings cs;
     private readonly AdvisorSettings adv;
+    private readonly IReadOnlyDictionary<uint, MaterialSource> overrides;
     private readonly Dictionary<(uint, int), Resolved> memo = [];
 
     private sealed record Resolved(MaterialSource Source, double Cash, double Value, bool Unknown, RecipeInfo? SubRecipe);
@@ -28,8 +30,10 @@ public sealed class ProfitCalculator
         IReadOnlySet<uint> gatherable,
         IReadOnlySet<uint> vendorSold,
         CraftSettings cs,
-        AdvisorSettings adv)
+        AdvisorSettings adv,
+        IReadOnlyDictionary<uint, MaterialSource>? overrides = null)
     {
+        this.overrides = overrides ?? new Dictionary<uint, MaterialSource>();
         this.items = items;
         this.prices = prices;
         this.recipeFor = recipeFor;
@@ -102,19 +106,26 @@ public sealed class ProfitCalculator
             AddLines(lines, ing.ItemId, amount * ing.Amount / Math.Max(1, sub.Yield), Resolve(ing.ItemId, depth + 2), depth + 1, unknown);
     }
 
-    private Resolved Resolve(uint itemId, int depth)
+    /// <summary>A way of getting a material and what it costs per unit (cash spent, and market value).</summary>
+    public readonly record struct Choice(MaterialSource Source, double Cash, double Value);
+
+    /// <summary>Every way this material can be obtained, for letting the player pick.</summary>
+    public IReadOnlyList<Choice> Choices(uint itemId)
+        => Options(itemId, 1).Select(o => new Choice(o.Source, o.Cash, o.Value)).ToList();
+
+    private int CraftDepthLimit => cs.MaterialMode == MaterialMode.GatherAndCraft ? Math.Max(cs.MaxIntermediateDepth, 5) : cs.MaxIntermediateDepth;
+
+    private List<(MaterialSource Source, double Cash, double Value, RecipeInfo? Sub)> Options(uint itemId, int depth)
     {
-        if (memo.TryGetValue((itemId, depth), out var cached)) return cached;
-
         var item = items(itemId);
-        double? buy = prices(itemId)?.CheapestListing;
-        double? vendor = vendorSold.Contains(itemId) && item is { VendorBuyPrice: > 0 } ? item.VendorBuyPrice : null;
+        var options = new List<(MaterialSource Source, double Cash, double Value, RecipeInfo? Sub)>();
 
-        double? craftCash = null, craftValue = null;
-        RecipeInfo? sub = null;
-        if (depth <= cs.MaxIntermediateDepth && recipeFor(itemId) is { } r)
+        if (vendorSold.Contains(itemId) && item is { VendorBuyPrice: > 0 })
+            options.Add((MaterialSource.Vendor, item.VendorBuyPrice, item.VendorBuyPrice, null));
+        if (prices(itemId)?.CheapestListing is { } buy)
+            options.Add((MaterialSource.Buy, buy, buy, null));
+        if (depth <= CraftDepthLimit && recipeFor(itemId) is { } r)
         {
-            sub = r;
             double c = 0, v = 0;
             foreach (var ing in r.Ingredients)
             {
@@ -122,30 +133,53 @@ public sealed class ProfitCalculator
                 c += child.Cash * ing.Amount;
                 v += child.Value * ing.Amount;
             }
-            craftCash = c / Math.Max(1, r.Yield);
-            craftValue = v / Math.Max(1, r.Yield);
+            options.Add((MaterialSource.Craft, c / Math.Max(1, r.Yield), v / Math.Max(1, r.Yield), r));
         }
-
-        var options = new List<(MaterialSource Source, double Cash, double Value)>();
-        if (vendor is { } vp) options.Add((MaterialSource.Vendor, vp, vp));
-        if (buy is { } bp) options.Add((MaterialSource.Buy, bp, bp));
-        if (craftCash is { } cc) options.Add((MaterialSource.Craft, cc, craftValue!.Value));
-        var marketValue = options.Count > 0 ? options.Min(o => o.Value) : (double?)null;
-
-        Resolved result;
-        if (gatherable.Contains(itemId) && cs.GatherWhenPossible)
-            result = new Resolved(MaterialSource.Gather, 0, marketValue ?? 0, false, null);
-        else if (options.Count > 0)
+        if (gatherable.Contains(itemId))
         {
-            var best = options.MinBy(o => o.Value);
-            result = new Resolved(best.Source, best.Cash, best.Value, false, best.Source == MaterialSource.Craft ? sub : null);
+            // Gathering costs no gil; its value is what you could otherwise sell or buy it for.
+            var worth = options.Count > 0 ? options.Min(o => o.Value) : 0;
+            options.Add((MaterialSource.Gather, 0, worth, null));
         }
-        else if (gatherable.Contains(itemId))
-            result = new Resolved(MaterialSource.Gather, 0, 0, false, null);
-        else
-            result = new Resolved(MaterialSource.Unknown, 0, 0, true, null);
+
+        return options;
+    }
+
+    private Resolved Resolve(uint itemId, int depth)
+    {
+        if (memo.TryGetValue((itemId, depth), out var cached)) return cached;
+        memo[(itemId, depth)] = new Resolved(MaterialSource.Unknown, 0, 0, true, null); // guards against recipe loops
+
+        var options = Options(itemId, depth);
+        (MaterialSource Source, double Cash, double Value, RecipeInfo? Sub)? pick = null;
+
+        if (overrides.TryGetValue(itemId, out var wanted))
+            pick = options.FirstOrDefault(o => o.Source == wanted) is { Source: var found } chosen && found == wanted ? chosen : null;
+
+        pick ??= cs.MaterialMode switch
+        {
+            MaterialMode.GatherAndCraft => First(options, MaterialSource.Gather, MaterialSource.Craft, MaterialSource.Vendor, MaterialSource.Buy),
+            MaterialMode.BuyAll => First(options, MaterialSource.Buy, MaterialSource.Vendor, MaterialSource.Craft, MaterialSource.Gather),
+            _ => cs.GatherWhenPossible && options.Any(o => o.Source == MaterialSource.Gather)
+                ? First(options, MaterialSource.Gather)
+                : options.Where(o => o.Source != MaterialSource.Gather).OrderBy(o => o.Value).Cast<(MaterialSource, double, double, RecipeInfo?)?>().FirstOrDefault()
+                  ?? First(options, MaterialSource.Gather),
+        };
+
+        var result = pick is { } p
+            ? new Resolved(p.Source, p.Cash, p.Value, false, p.Source == MaterialSource.Craft ? p.Sub : null)
+            : new Resolved(MaterialSource.Unknown, 0, 0, true, null);
 
         memo[(itemId, depth)] = result;
         return result;
+    }
+
+    private static (MaterialSource Source, double Cash, double Value, RecipeInfo? Sub)? First(
+        List<(MaterialSource Source, double Cash, double Value, RecipeInfo? Sub)> options, params MaterialSource[] order)
+    {
+        foreach (var source in order)
+            foreach (var o in options)
+                if (o.Source == source) return o;
+        return null;
     }
 }

@@ -57,7 +57,7 @@ This screen keeps an eye on what your retainers already have up. If someone unde
 
 Hit **Scan** and SellWise prices every recipe that sells on your world. It takes about a minute the first time, then it's cached for half an hour. For each recipe it works out:
 
-- **What the materials really cost:** the cheapest of gathering them, buying from a vendor, buying on the market, or crafting the parts yourself.
+- **How you get the materials is up to you:** pick **Gather & craft** (gather everything and make every part, the way GatherBuddy does), **Cheapest mix** (buy wherever that beats making it), or **Buy everything** from the market board. Profit, material cost and time all follow what you pick. Click any material's tag to change just that one; the menu shows what each option costs per unit.
 - **How much you'd actually make:** it ranks by what one batch earns, sized to what your world's market can take in a couple of days, so you don't end up undercutting yourself.
 - **Whether you can make it:** locked recipes say why (level, a master recipe book, or a quest).
 - **How long it'll take:** a rough gathering and crafting time, including waiting for timed nodes (the ones that only spawn at certain Eorzea hours) to come up.
@@ -67,9 +67,11 @@ Hit **Scan** and SellWise prices every recipe that sells on your world. It takes
 
 ![Craft pipeline](docs/images/craft-running.png)
 
-**Gather + craft** hands the job to GatherBuddy Reborn, which goes and gathers whatever's missing, grabs anything sitting on your retainers, and crafts it. If you've already got the materials, **Craft with Artisan** skips straight to crafting. You can watch it move through gathering, crafting the parts, crafting the item and selling. When it's done, SellWise pulls a fresh price so you know what to list at.
+**Gather + craft** hands the job to GatherBuddy Reborn, which goes and gathers whatever's missing, grabs anything sitting on your retainers, and crafts it. If you've already got the materials, **Craft with Artisan** skips straight to crafting. If you planned to buy something, SellWise lists what to pick up first. It never buys for you, so anything that isn't in your bags when the job starts, GatherBuddy gathers or crafts instead.
 
-A small **Crafting status** window pops up too. While it's gathering, it lists every material with a meter that fills as it lands in your bags, how long each will take (or when a timed node next spawns), and your GP. Once everything's gathered it switches to a crafting meter with time left, and when it's finished it shows the price to list at. Tick **Use cordials when ready** there and SellWise drinks the biggest cordial that won't waste GP whenever the cooldown's up, between nodes.
+When it's done, SellWise pulls a fresh price so you know what to list at.
+
+Once you press start, the main window tucks itself away and a small **SellWise progress** window takes over. It comes back by itself when the job's done (or if it fails), or whenever you click **Open SellWise**. While it's gathering, the progress window lists every material with a meter that fills as it lands in your bags, how long each will take (or when a timed node next spawns), and your GP. Once everything's gathered it switches to a crafting meter with time left, and when it's finished it shows the price to list at. Tick **Use cordials when ready** there and SellWise drinks the biggest cordial that won't waste GP whenever the cooldown's up, between nodes.
 
 ## The little extras
 

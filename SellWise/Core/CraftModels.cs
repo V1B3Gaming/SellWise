@@ -47,8 +47,22 @@ public enum MaterialSource
     Unknown,
 }
 
+/// <summary>How the player wants to get a recipe's materials.</summary>
+public enum MaterialMode
+{
+    /// <summary>Gather what's gatherable and craft the parts (what GatherBuddy's Vulcan does).</summary>
+    GatherAndCraft,
+    /// <summary>Whatever costs least: buy or vendor when that beats making it.</summary>
+    Cheapest,
+    /// <summary>Buy from the market board wherever it's listed.</summary>
+    BuyAll,
+}
+
 public sealed class CraftSettings
 {
+    /// <summary>How materials are obtained for costing, ranking and time estimates. The player picks this.</summary>
+    public MaterialMode MaterialMode { get; set; } = MaterialMode.GatherAndCraft;
+
     /// <summary>Price crafted results as HQ when the recipe can be HQ (the solvers in Artisan/Vulcan usually hit HQ).</summary>
     public bool AssumeHq { get; set; } = true;
 

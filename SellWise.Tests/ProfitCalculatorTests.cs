@@ -30,11 +30,53 @@ public class ProfitCalculatorTests
     private static AggregatedPrice Price(uint id, uint? nqMin = null, double? nqAvg = null, double nqVel = 0, uint? hqMin = null, double? hqAvg = null, double hqVel = 0)
         => new(id, new QualityPrices(nqMin, nqAvg, nqVel, null), new QualityPrices(hqMin, hqAvg, hqVel, null));
 
-    private ProfitCalculator Calc(CraftSettings? cs = null)
+    private ProfitCalculator Calc(CraftSettings? cs = null, Dictionary<uint, MaterialSource>? overrides = null)
         => new(id => items.GetValueOrDefault(id), id => prices.GetValueOrDefault(id),
             id => id == 2 ? IngotRecipe : null,
             new HashSet<uint> { 3, 5 }, new HashSet<uint> { 4 },
-            cs ?? new CraftSettings(), new AdvisorSettings());
+            cs ?? new CraftSettings(), new AdvisorSettings(), overrides);
+
+    [Fact]
+    public void GatherAndCraftMakesPartsEvenWhenBuyingIsCheaper()
+    {
+        prices[2] = Price(2, nqMin: 100); // ingots on the market for less than they cost to make
+        Assert.Equal(MaterialSource.Craft, Calc().Evaluate(Sword)!.Materials.Single(m => m.ItemId == 2).Source);
+        Assert.Equal(MaterialSource.Buy, Calc(new CraftSettings { MaterialMode = MaterialMode.Cheapest }).Evaluate(Sword)!.Materials.Single(m => m.ItemId == 2).Source);
+    }
+
+    [Fact]
+    public void BuyEverythingBuysWhatsListed()
+    {
+        var o = Calc(new CraftSettings { MaterialMode = MaterialMode.BuyAll }).Evaluate(Sword)!;
+        Assert.Equal(MaterialSource.Buy, o.Materials.Single(m => m.ItemId == 2).Source);  // ingot bought, not crafted
+        Assert.Equal(MaterialSource.Buy, o.Materials.Single(m => m.ItemId == 5).Source);  // crystals bought, not gathered
+        Assert.DoesNotContain(o.Materials, m => m.Depth > 0);                              // nothing crafted, so no sub-materials
+        Assert.Equal(2 * 900 + 5 * 10, o.CashCost);
+    }
+
+    [Fact]
+    public void PerMaterialOverrideWins()
+    {
+        var o = Calc(overrides: new() { [2] = MaterialSource.Buy }).Evaluate(Sword)!;
+        Assert.Equal(MaterialSource.Buy, o.Materials.Single(m => m.ItemId == 2).Source);
+        Assert.Equal(MaterialSource.Gather, o.Materials.Single(m => m.ItemId == 5).Source); // others follow the mode
+    }
+
+    [Fact]
+    public void OverrideToUnavailableSourceFallsBackToMode()
+    {
+        var o = Calc(overrides: new() { [5] = MaterialSource.Craft }).Evaluate(Sword)!; // crystals have no recipe
+        Assert.Equal(MaterialSource.Gather, o.Materials.Single(m => m.ItemId == 5).Source);
+    }
+
+    [Fact]
+    public void ChoicesListEveryWayToGetAMaterial()
+    {
+        var ingot = Calc().Choices(2).Select(c => c.Source).ToHashSet();
+        Assert.Equal(new HashSet<MaterialSource> { MaterialSource.Buy, MaterialSource.Craft }, ingot);
+        var ore = Calc().Choices(3);
+        Assert.Contains(ore, c => c.Source == MaterialSource.Gather && c.Cash == 0 && c.Value == 100);
+    }
 
     [Fact]
     public void CostsIntermediatesByCheapestRoute()
@@ -90,7 +132,7 @@ public class ProfitCalculatorTests
     [Fact]
     public void BuysWhenNotGathering()
     {
-        var o = Calc(new CraftSettings { GatherWhenPossible = false }).Evaluate(Sword)!;
+        var o = Calc(new CraftSettings { MaterialMode = MaterialMode.Cheapest, GatherWhenPossible = false }).Evaluate(Sword)!;
 
         Assert.Equal(MaterialSource.Buy, o.Materials.Single(m => m.ItemId == 5).Source);
         Assert.Equal(MaterialSource.Craft, o.Materials.Single(m => m.ItemId == 2).Source);
@@ -130,7 +172,7 @@ public class ProfitCalculatorTests
     [Fact]
     public void RespectsIntermediateDepthLimit()
     {
-        var o = Calc(new CraftSettings { MaxIntermediateDepth = 0 }).Evaluate(Sword)!;
+        var o = Calc(new CraftSettings { MaterialMode = MaterialMode.Cheapest, MaxIntermediateDepth = 0 }).Evaluate(Sword)!;
         Assert.Equal(MaterialSource.Buy, o.Materials.Single(m => m.ItemId == 2).Source);
     }
 

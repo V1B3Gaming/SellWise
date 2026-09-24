@@ -23,6 +23,10 @@ public sealed class ProfitScanner : IDisposable
     private Task<RecipeDb>? recipeDbTask;
     private volatile bool scanning;
 
+    // What the last scan priced, so a change of material mode can re-rank without fetching prices again.
+    private List<RecipeInfo> lastSellers = [];
+    private RecipeUnlocks? lastUnlocks;
+
     public ProfitScanner(Configuration config, MarketService market, ItemCatalog catalog)
     {
         this.config = config;
@@ -84,25 +88,16 @@ public sealed class ProfitScanner : IDisposable
                 return q.UnitsPerDay >= craft.MinUnitsPerDay;
             }).ToList();
 
-            // Pass 2: price the materials (and intermediate materials) of the ones that sell.
+            // Pass 2: price the materials (and intermediate materials) of the ones that sell. Deep enough for
+            // "gather & craft", which makes every part, so switching material mode doesn't need a rescan.
             var materialIds = new HashSet<uint>();
-            foreach (var r in sellers) CollectMaterials(r, db, craft.MaxIntermediateDepth, materialIds);
+            foreach (var r in sellers) CollectMaterials(r, db, Math.Max(craft.MaxIntermediateDepth, 5), materialIds);
             await market.FetchAggregatedAsync(materialIds.ToList(), world, PriceMaxAge,
                 new Progress<(int Done, int Total)>(p => Status = $"Pricing {materialIds.Count:N0} materials for {sellers.Count:N0} items that sell... {p.Done}/{p.Total}"), token);
 
-            var calc = new ProfitCalculator(catalog.Get, market.GetAggregated,
-                id => db.ByResult.TryGetValue(id, out var sub) ? sub : null,
-                db.Gatherable, db.VendorSold, craft, adv);
-
-            var results = new List<CraftOpportunity>();
-            foreach (var r in sellers)
-            {
-                if (calc.Evaluate(r) is not { } o) continue;
-                o.LockedReason = unlocks.Describe(r);
-                results.Add(o);
-            }
-
-            Results = results.OrderByDescending(o => o.BatchProfit).Take(MaxResults).ToList();
+            lastSellers = sellers;
+            lastUnlocks = unlocks;
+            Results = Evaluate(db, sellers, unlocks, craft, adv);
             LastScanUtc = DateTime.UtcNow;
             var unlockedCount = Results.Count(o => o.Unlocked);
             Status = $"Scanned {candidates.Count:N0} recipes; {sellers.Count:N0} sell at least {craft.MinUnitsPerDay:0.#}/day on {world}. " +
@@ -121,6 +116,44 @@ public sealed class ProfitScanner : IDisposable
             scanning = false;
         }
     }
+
+    private List<CraftOpportunity> Evaluate(RecipeDb db, List<RecipeInfo> sellers, RecipeUnlocks unlocks, CraftSettings craft, AdvisorSettings adv)
+    {
+        var calc = Calculator(db, craft, adv, null);
+        var results = new List<CraftOpportunity>();
+        foreach (var r in sellers)
+        {
+            if (calc.Evaluate(r) is not { } o) continue;
+            o.LockedReason = unlocks.Describe(r);
+            results.Add(o);
+        }
+        return results.OrderByDescending(o => o.BatchProfit).Take(MaxResults).ToList();
+    }
+
+    private ProfitCalculator Calculator(RecipeDb db, CraftSettings craft, AdvisorSettings adv, IReadOnlyDictionary<uint, MaterialSource>? overrides)
+        => new(catalog.Get, market.GetAggregated,
+            id => db.ByResult.TryGetValue(id, out var sub) ? sub : null,
+            db.Gatherable, db.VendorSold, craft, adv, overrides);
+
+    /// <summary>Re-ranks the last scan with the current settings (e.g. a new material mode), using the prices already fetched.</summary>
+    public void Recalculate()
+    {
+        if (scanning || Db is not { } db || lastUnlocks is not { } unlocks || lastSellers.Count == 0) return;
+        Results = Evaluate(db, lastSellers, unlocks, config.Craft, config.Advisor);
+    }
+
+    /// <summary>Prices one recipe with the player's own choice of source for some of its materials.</summary>
+    public CraftOpportunity Reprice(CraftOpportunity o, IReadOnlyDictionary<uint, MaterialSource> overrides)
+    {
+        if (overrides.Count == 0 || Db is not { } db) return o;
+        if (Calculator(db, config.Craft, config.Advisor, overrides).Evaluate(o.Recipe) is not { } priced) return o;
+        priced.LockedReason = o.LockedReason;
+        return priced;
+    }
+
+    /// <summary>Every way to get a material, with what each costs per unit.</summary>
+    public IReadOnlyList<ProfitCalculator.Choice> Choices(uint itemId)
+        => Db is { } db ? Calculator(db, config.Craft, config.Advisor, null).Choices(itemId) : [];
 
     /// <summary>Reads job levels, master recipe books and quest completion. Must run on the framework thread.</summary>
     private static unsafe RecipeUnlocks ReadUnlocks(RecipeDb db)

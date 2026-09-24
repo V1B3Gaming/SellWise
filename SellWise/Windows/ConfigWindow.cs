@@ -167,6 +167,7 @@ public sealed class ConfigWindow : Window
         changed |= Check("Price crafts as HQ when possible", cr.AssumeHq, v => cr.AssumeHq = v);
         Help("Artisan and Vulcan usually reach HQ with decent gear. Turn off if you mostly get NQ.");
         changed |= Check("Gather materials when possible", cr.GatherWhenPossible, v => cr.GatherWhenPossible = v);
+        Help("For the \"Cheapest mix\" materials choice. Pick how to get materials on each recipe's page.");
         changed |= Check("Count gathered materials at market value", cr.ValueGatheredAtMarket, v => cr.ValueGatheredAtMarket = v);
         Help("On: ranks by true profit, since you could sell the mats instead. Off: gathered mats are free.");
         changed |= Check("Include expert recipes", cr.IncludeExpert, v => cr.IncludeExpert = v);
@@ -200,6 +201,7 @@ public sealed class ConfigWindow : Window
             cr.MaxIntermediateDepth = depth;
             changed = true;
         }
+        Help("How many layers of parts \"Cheapest mix\" will consider crafting. \"Gather & craft\" always makes every part.");
 
         ImGui.Spacing();
         ImGui.TextUnformatted("Gear");
