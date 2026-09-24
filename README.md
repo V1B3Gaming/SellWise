@@ -1,104 +1,138 @@
-<img src="SellWise/images/icon.png" width="96" align="right" alt="">
+<img src="SellWise/images/icon.png" width="112" align="right" alt="SellWise icon">
 
 # SellWise
 
-A Dalamud plugin (API 15) that looks at everything you own (bags, crystals, saddlebags, every retainer and their market listings), pulls live prices from [Universalis](https://universalis.app), and tells you what to **list, relist, vendor, or hold**, with a price to type in.
+**Know what to sell, where, and for how much.** A Dalamud plugin for FINAL FANTASY XIV that looks at everything you own (bags, crystals, saddlebags, and every retainer's inventory and market listings), prices it with live [Universalis](https://universalis.app) data, and tells you what to **list, relist, vendor or hold**, with a price ready to paste. It also finds the most profitable things you can craft, hands the gathering and crafting to GatherBuddy Reborn or Artisan, keeps your gear repaired, and tells you whether your stats (plus which food) will hit HQ.
 
-## What it does
+SellWise never lists, buys or changes prices on the market board for you. You paste the prices yourself.
 
-The window has a sidebar (Sell, Listings, Craft, Retainers, plus City, Repair and Settings) and a list-and-detail layout: pick something on the left, see the answer on the right. The accent colour (violet, teal or silver) is in Settings.
+> The screenshots below are renders of the plugin's screens made from its UI code and real item icons. In game, the fonts and spacing follow your Dalamud settings.
 
-| Screen | Shows |
+---
+
+## What to sell
+
+![What to sell](docs/images/sell.png)
+
+Every item you own, grouped by item and quality, with a verdict and a price:
+
+| Verdict | Meaning |
 |---|---|
-| **What to sell** | Every stack you own, grouped by item and quality, with a verdict, suggested price (click to copy), net gil after tax, estimated days to sell, and a detail panel with lowest listing, recent median, sales per day, data-center cheapest and a recent-sales chart. A dot marks the best picks for your free market slots. |
-| **My listings** | Everything your retainers have on the board: **Undercut** (relist at X), **Raise price** (you're far below the next seller), or **OK**. |
-| **Craft for profit** | Scans every recipe you can make, ranks them by batch profit, and runs the gather-and-craft for you (see below). |
-| **Retainers** | Which retainers have been scanned and when, listing slots used, and gil. |
+| **List** | Undercut the cheapest listing and it should sell soon. The price is ready to copy. |
+| **Slow** | Worth listing, but it will take a while; use a spare slot. |
+| **Hold** | Someone has dumped the price far below what it really sells for. Wait, or list just behind the dump. |
+| **Vendor** | An NPC pays about as much as the market would after tax. Not worth a slot. |
 
-The server info bar shows `SellWise: N undercut` when any of your listings get undercut.
+The detail panel shows the lowest listing, the recent median sale, sales per day, the cheapest price on your data center, and a chart of recent sales. A dot marks the best picks for your free retainer market slots.
 
-### How prices are chosen
-- **Fair price** is the *median* of recent sales of the same quality (default: last 14 days). Median rather than mean, so one troll sale doesn't skew it.
-- **Suggested price** is the cheapest competitor minus 1 gil (or a %). Your own retainers' listings are ignored.
-- **Dumped listings.** Any listing below the floor (65% of the median) is treated as a dump. You get **Hold**, with a price that puts you next in line once the dump sells, instead of racing it to the bottom.
-- **Competition by quality.** HQ sellers only compete with HQ listings. NQ sellers compete with everything, because a cheap HQ listing takes NQ buyers too.
-- **Vendor check.** If the NPC vendor pays within 1.25x of what the market would net after tax, the verdict is **Vendor**, since it isn't worth a slot.
-- **Days to sell** = (units listed cheaper than you + your quantity) ÷ units sold per day. More than 14 days is marked **List (slow)**.
+**How prices are chosen**
+- The fair price is the **median** of recent same-quality sales, so one troll sale can't skew it.
+- Your own retainers' listings are ignored when looking for the cheapest competitor.
+- Listings far below the median are treated as **dumps**: you're told to line up behind them instead of racing them to the bottom.
+- HQ sellers compete only with HQ listings. NQ sellers compete with everything, because a cheap HQ listing takes NQ buyers too.
+- Market tax, the undercut amount, the dump floor, and the vendor margin can all be changed in Settings.
 
-Every threshold can be changed under `/sellwise config`.
+## My listings
+
+Everything your retainers have on the board, flagged **Undercut** (with the price to change to), **Raise price** (you're far below the next seller), or **OK**. The server info bar shows `SellWise: N undercut` so you know without opening the window.
 
 ## Craft for profit
-1. **Scan** (`/sellwise craft`). Covers every marketable recipe; expert and specialist recipes are skipped by default. Each result is marked **Unlocked** or **Locked**, and hovering a locked one shows why: job level too low, a master recipe book you don't have, or an unfinished quest. Locked recipes can't be sent to Vulcan or Artisan; tick **Unlocked only** to hide them. It prices every result through Universalis' bulk endpoint, keeps items that sell at least once a day, then prices their materials. A scan takes about a minute; prices are cached for 30 minutes.
-2. **Material costs.** Each material is costed at the cheapest of gathering it, buying it from an NPC vendor, buying it on the market board, or crafting it. Intermediates are costed recursively, up to 3 levels deep.
-   - **Profit** counts gathered materials at market value (their opportunity cost).
-   - **Cash profit** counts them as free.
-3. **Ranking by batch profit.** Batch profit = profit per craft × the number of crafts your world's market absorbs in about 2 days (max 99). "Market gil/day" is available as a sort, but it assumes you capture every sale on the world, so treat it as an upper bound.
-4. **Make it.** Pick a quantity, then choose a backend:
-   - **Gather + craft with GatherBuddy (Vulcan):** runs `/vulcan craft <recipe> <qty>`. GatherBuddy Reborn gathers missing materials, pulls from retainers, and crafts, intermediates included.
-   - **Craft with Artisan:** crafts only. SellWise queues missing intermediates first, then the final item, through Artisan's IPC. Everything must already be in your bags; the materials table shows what's missing, with a **Go gather** button (`/gather`) for each gatherable material.
-5. **Price it.** SellWise watches your bags until the items arrive, fetches fresh prices, and shows the list price.
 
-### Quality check
-Each recipe's detail shows whether you'll hit **HQ** (or, for scrip collectables, the top collectability tier) with your stats:
-- SellWise remembers each crafting job's stats whenever you're on that job with no food or medicine active, because the game only shows the current job's stats.
-- A built-in simulator, using the same formulas as Teamcraft's, searches for a rotation. If it finds one, you can hit the target. If it falls short, a full solver might still do a little better.
-- If you're short, it tries crafting foods and medicines from the game data and suggests the cheapest combination that gets you there: free if it's in your bags, otherwise the current market price.
-- It assumes NQ materials, so HQ materials only make things easier.
+![Craft for profit](docs/images/craft.png)
 
-Gathering cordials and food are handled by GatherBuddy Reborn's own consumable settings.
+- **Scan:** prices every marketable recipe on your world (about a minute; results are cached for 30 minutes).
+- **Material costs:** each material is costed at the cheapest of gathering it, NPC vendors, the market board, or crafting it yourself. Intermediate crafts are costed too, up to 3 levels deep.
+- **Ranking:** by **batch profit**, which is profit per craft × how many crafts your world's market absorbs in about two days. That keeps you from flooding your own market.
+- **Locked recipes:** marked **Locked**, with the reason (level, master recipe book, or quest).
+- **Quality check:** uses your saved stats for that job to say whether you'll hit **HQ**, or the top collectability tier for scrip collectables. If you won't, it suggests the **cheapest food and potion** that gets you there, counting what's already in your bags as free.
+- **Materials list:** shows what's in your bags and on your retainers, with one-click **Gather** buttons.
 
-### Gear repair
-- Durability is checked before every craft job and between Artisan steps.
-- Below your threshold (Settings > Gear), SellWise **self-repairs with Dark Matter** when your crafters are high enough.
-- Otherwise it **teleports to a random enabled city that has a mender**, walks there with vnavmesh, and repairs everything.
-- During a Vulcan run, GatherBuddy Reborn repairs on its own; set its threshold in its settings.
-- The sidebar's wrench shows your lowest durability; click it to repair now.
+### While it runs
 
-The gathering and crafting are done by GatherBuddy Reborn and Artisan, and carry the same risk as running them yourself. Stay at the keyboard while they run.
+![Craft pipeline](docs/images/craft-running.png)
+
+Press **Gather + craft** and GatherBuddy Reborn's Vulcan pipeline gathers what's missing, pulls from retainers, and crafts. Or press **Craft with Artisan** if you already have the materials. The screen shows a four-step pipeline (gather, craft parts, craft, sell), highlights the material being gathered right now, and fetches a fresh price once your crafts arrive.
+
+## Gear, travel and retainers
+
+- **Auto-repair:** before a craft job (and between Artisan steps), gear below your threshold is **self-repaired with Dark Matter** if your crafters are high enough. Otherwise SellWise **teleports to a random city that has a mender**, walks there with vnavmesh, and repairs everything.
+- **City teleport:** one click takes you to a random major city you've attuned to; choose which cities in Settings.
+- **Retainers:** the game only lets plugins read a retainer's inventory while you're talking to it, so open each retainer once at a summoning bell. SellWise remembers what it saw until your next visit.
 
 ## Commands
-- `/sellwise` (or `/sw`): open the window
-- `/sellwise city`: teleport to a random major city you've attuned to (pick which cities in settings)
-- `/sellwise bell`: walk to the nearest summoning bell in your current zone (needs **vnavmesh**). Only runs when you ask.
-- `/sellwise repair`: repair gear now (self-repair or a city mender)
-- `/sellwise stop`: stop everything SellWise started (repair trip, craft job, walking)
-- `/sellwise refresh`: force a price refresh
-- `/sellwise config`: settings
 
-## Retainers need one visit
-The game only loads a retainer's inventory while you're talking to it. Visit a summoning bell and open each retainer once; opening the sell list also captures its listings. SellWise saves each snapshot to `inventory.json` in its config folder and updates it every time you open that retainer again. Saddlebags work the same way: open them once.
+| Command | Does |
+|---|---|
+| `/sellwise` or `/sw` | Open the window |
+| `/sw craft` | Open Craft for profit |
+| `/sw refresh` | Refresh prices now |
+| `/sw repair` | Repair gear now (Dark Matter, or a city mender) |
+| `/sw city` | Teleport to a random attuned major city |
+| `/sw bell` | Walk to the nearest summoning bell in this zone (vnavmesh) |
+| `/sw stop` | Stop everything SellWise started (repair trip, craft job, walking) |
+| `/sw config` | Settings |
 
-## Integrations
-- **vnavmesh** (optional): "Walk to nearest bell" pathfinds to the closest summoning bell and targets it when you arrive.
-- **GatherBuddy Reborn** (optional): the Vulcan gather-and-craft pipeline, plus `/gather` for individual materials.
-- **Artisan** (optional): crafts through its `CraftItem` IPC.
-- **ECommons** (bundled): clicks the repair and confirmation windows the same way GatherBuddy, Artisan and AutoDuty do.
-- **Universalis** (required): market data. It's only as fresh as the last time someone with Dalamud viewed that item's market board page.
+## Installing
 
-SellWise never lists, buys, or changes prices for you. It's advisory only, and you enter prices yourself.
+1. In game, open `/xlsettings` → **Experimental** → **Custom Plugin Repositories** and add:
+   ```
+   https://raw.githubusercontent.com/V1B3Gaming/SellWise/main/repo.json
+   ```
+   Tick **Enabled**, click **+**, then **Save and Close**.
+2. Open `/xlplugins`, search for **SellWise**, and click **Install**. Updates arrive automatically.
 
-## Building
+## Dependencies
+
+**Required**
+
+| | What for |
+|---|---|
+| [Dalamud](https://github.com/goatcorp/Dalamud) (API 15, via XIVLauncher) | Runs the plugin. |
+| [Universalis](https://universalis.app) | Market listings, sale history and prices. No account needed; data is as fresh as the last time someone with Dalamud viewed that item's market board. |
+
+**Bundled** (installed with SellWise; nothing to do)
+
+| | What for |
+|---|---|
+| [ECommons](https://github.com/NightmareXIV/ECommons) | Clicks the repair, confirmation and NPC menu windows, the same way GatherBuddy Reborn, Artisan and AutoDuty do. |
+
+**Optional plugins** (SellWise works without them; the related buttons are disabled until they're installed)
+
+| Plugin | Used for |
+|---|---|
+| [vnavmesh](https://github.com/awgil/ffxiv_navmesh) | Walking to a summoning bell or a mender. |
+| [GatherBuddy Reborn](https://github.com/FFXIV-CombatReborn/GatherBuddyReborn) | **Gather + craft** (its Vulcan pipeline), the per-material **Gather** buttons, and cordials/food while gathering (set in its own settings). |
+| [Artisan](https://github.com/PunishXIV/Artisan) | **Craft with Artisan** when you already have the materials. |
+
+**Building from source**
+
+| | Version |
+|---|---|
+| .NET SDK | 10 |
+| Dalamud.NET.Sdk | 15.0.0 (uses the Dalamud files XIVLauncher installs) |
+| xUnit | 2.9 (tests only) |
+
 ```
 dotnet build SellWise/SellWise.csproj -c Release
 dotnet test SellWise.Tests
 ```
-Needs the .NET 10 SDK and XIVLauncher's Dalamud dev files at `%AppData%\XIVLauncher\addon\Hooks\dev`.
-Set `SELLWISE_LIVE=1` to also run a smoke test against the real Universalis API.
+Set `SELLWISE_LIVE=1` to also run the tests that call the real Universalis API.
 
-## Installing from the custom repository
-1. `/xlsettings` → **Experimental** → **Custom Plugin Repositories**: add
-   `https://raw.githubusercontent.com/V1B3Gaming/SellWise/main/repo.json`, tick **Enabled**, click **+**, then **Save and Close**.
-2. `/xlplugins` → search **SellWise** → **Install**. Dalamud offers updates automatically when a new release is published.
+## Releasing
 
-## Publishing a release
-Push a version tag and the GitHub Actions workflow does the rest: it builds against the current Dalamud, runs the tests, attaches `latest.zip` to a GitHub release, and bumps `repo.json`.
+Push a version tag and GitHub Actions builds against the current Dalamud release, runs the tests, attaches `latest.zip` to a GitHub release, and bumps `repo.json` so Dalamud offers the update:
 ```
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
-## Loading a local build (development)
-1. `/xlsettings` → **Experimental** → **Dev Plugin Locations**: add the full path to `SellWise\bin\Release\SellWise.dll`, then click **+** and save.
-2. `/xlplugins` → **Dev Tools** → **Installed Dev Plugins** → enable **SellWise**.
+## Good to know
 
-Don't have the dev build and the repository version enabled at the same time; they share an internal name.
+- SellWise is **advisory for selling**. It never lists, buys or reprices on the market board.
+- Gathering and crafting are done by GatherBuddy Reborn and Artisan, and carry the same risk as running those plugins yourself. Stay at the keyboard.
+- Crafting quality estimates assume NQ materials and no lucky conditions, so real results can only be the same or better.
+- Price data comes from Universalis uploads. An item nobody has looked at recently may show stale prices.
+
+## Credits
+
+Market data by [Universalis](https://universalis.app). Crafting formulas follow the [Teamcraft simulator](https://github.com/ffxiv-teamcraft/simulator). FINAL FANTASY XIV © SQUARE ENIX CO., LTD. SellWise is a fan-made tool and is not affiliated with Square Enix.
