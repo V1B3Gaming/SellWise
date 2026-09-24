@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -9,6 +10,7 @@ namespace SellWise.Windows;
 public sealed class ConfigWindow : Window
 {
     private readonly Plugin plugin;
+    private IDisposable? theme;
 
     public ConfigWindow(Plugin plugin) : base("SellWise Settings###SellWiseConfig")
     {
@@ -17,9 +19,37 @@ public sealed class ConfigWindow : Window
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
+    public override void PreDraw() => theme = Theme.Push();
+
+    public override void PostDraw()
+    {
+        theme?.Dispose();
+        theme = null;
+    }
+
     public override void Draw()
     {
+        using var pad = ImRaii.PushStyle(ImGuiStyleVar.WindowPadding, new Vector2(16, 14));
+        using var body = ImRaii.Child("##settings", Vector2.Zero, false, ImGuiWindowFlags.AlwaysUseWindowPadding);
+        if (!body) return;
+
         var c = plugin.Config;
+        ImGui.TextUnformatted("Look");
+        ImGui.Separator();
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextUnformatted("Accent colour");
+        foreach (var accent in Theme.Accents)
+        {
+            ImGui.SameLine();
+            if (ImGui.RadioButton(accent.Name, c.Accent == accent.Name))
+            {
+                c.Accent = accent.Name;
+                Theme.SetAccent(accent.Name);
+                c.Save();
+            }
+        }
+        ImGui.Spacing();
+
         var a = c.Advisor;
         var changed = false;
 
@@ -169,6 +199,23 @@ public sealed class ConfigWindow : Window
             cr.MaxIntermediateDepth = depth;
             changed = true;
         }
+
+        ImGui.Spacing();
+        ImGui.TextUnformatted("Gear");
+        ImGui.Separator();
+        changed |= Check("Repair automatically around craft jobs", c.AutoRepair, v => c.AutoRepair = v);
+        Help("Checked before every job and between Artisan steps. During a Vulcan run GatherBuddy repairs on its own; set its repair threshold in GatherBuddy's settings.");
+        var threshold = c.RepairThreshold;
+        if (ImGui.SliderInt("Repair below", ref threshold, 1, 99, "%d%%"))
+        {
+            c.RepairThreshold = threshold;
+            changed = true;
+        }
+        changed |= Check("Self-repair with Dark Matter when possible", c.AllowSelfRepair, v => c.AllowSelfRepair = v);
+        changed |= Check("Otherwise teleport to a city mender", c.AllowNpcRepair, v => c.AllowNpcRepair = v);
+        Help("Picks a random enabled city (from the teleport list below) that has a mender, walks there with vnavmesh and repairs everything.");
+
+        Theme.Wrapped("Gathering potions (cordials) and food during gathering are handled by GatherBuddy Reborn: turn on consumables in its auto-gather settings.", Theme.Text3);
 
         ImGui.Spacing();
         ImGui.TextUnformatted("Other");

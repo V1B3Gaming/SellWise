@@ -16,7 +16,9 @@ public sealed record RecipeInfo(
     bool IsSpecialist,
     uint SecretBookId,
     IReadOnlyList<Ingredient> Ingredients,
-    uint QuestId = 0)
+    uint QuestId = 0,
+    CraftRecipe? Craft = null,
+    IReadOnlyList<int>? CollectableQuality = null)
 {
     public static readonly string[] JobAbbreviations = ["CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL"];
 

@@ -5,6 +5,7 @@ using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using ECommons;
 using SellWise.Core;
 using SellWise.Services;
 using SellWise.Windows;
@@ -38,6 +39,8 @@ public sealed class Plugin : IDalamudPlugin
     public ProfitScanner Scanner { get; }
     public CraftCoordinator Crafter { get; }
     public CityTeleporter Teleporter { get; }
+    public RepairService Repair { get; }
+    public QualityService Quality { get; }
 
     private readonly WindowSystem windows = new("SellWise");
     private readonly MainWindow mainWindow;
@@ -46,6 +49,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public Plugin()
     {
+        ECommonsMain.Init(PluginInterface, this);
         Config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         Catalog = new ItemCatalog();
         Tracker = new InventoryTracker();
@@ -53,8 +57,12 @@ public sealed class Plugin : IDalamudPlugin
         Advice = new AdviceService(Config, Tracker, Market, Catalog);
         Navigator = new BellNavigator();
         Scanner = new ProfitScanner(Config, Market, Catalog);
-        Crafter = new CraftCoordinator(Tracker);
         Teleporter = new CityTeleporter();
+        Repair = new RepairService(Config, Teleporter);
+        Crafter = new CraftCoordinator(Tracker, Repair);
+        Quality = new QualityService(Config, Market, Tracker, Scanner);
+        Theme.SetAccent(Config.Accent);
+        Theme.InitFonts(PluginInterface.UiBuilder);
         Crafter.Finished += OnCraftFinished;
 
         mainWindow = new MainWindow(this);
@@ -62,7 +70,7 @@ public sealed class Plugin : IDalamudPlugin
         windows.AddWindow(mainWindow);
         windows.AddWindow(configWindow);
 
-        var info = new CommandInfo(OnCommand) { HelpMessage = "Open SellWise. \"/sellwise config\" opens settings, \"/sellwise city\" teleports to a random unlocked major city, \"/sellwise bell\" walks to the nearest summoning bell, \"/sellwise craft\" opens the profit finder." };
+        var info = new CommandInfo(OnCommand) { HelpMessage = "Open SellWise. \"/sellwise config\" opens settings, \"/sellwise city\" teleports to a random unlocked major city, \"/sellwise bell\" walks to the nearest summoning bell, \"/sellwise craft\" opens the profit finder, \"/sellwise repair\" repairs your gear, \"/sellwise stop\" stops everything SellWise started." };
         CommandManager.AddHandler(Command, info);
         CommandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand) { HelpMessage = "Alias for /sellwise.", ShowInHelp = false });
 
@@ -91,6 +99,14 @@ public sealed class Plugin : IDalamudPlugin
             case "city":
                 Teleporter.TeleportToRandomCity(Config.DisabledTeleportCities);
                 break;
+            case "repair":
+                Repair.Start();
+                break;
+            case "stop":
+                Repair.Stop();
+                Crafter.Stop();
+                Navigator.Stop();
+                break;
             case "craft":
                 mainWindow.ShowCraftTab();
                 break;
@@ -111,6 +127,8 @@ public sealed class Plugin : IDalamudPlugin
         Tracker.Update();
         Advice.Update(mainWindow.IsOpen);
         Navigator.Update(Config.TargetBellOnArrival);
+        Repair.Update();
+        Quality.Update();
         Crafter.Update();
         UpdateDtr();
     }
@@ -151,8 +169,10 @@ public sealed class Plugin : IDalamudPlugin
 
         dtrEntry?.Remove();
         windows.RemoveAllWindows();
+        Theme.DisposeFonts();
         Scanner.Dispose();
         Market.Dispose();
         Tracker.Dispose();
+        ECommonsMain.Dispose();
     }
 }

@@ -41,6 +41,9 @@ public sealed class CraftJob
     public bool StepSeenBusy { get; set; }
     public DateTime StepStartedUtc { get; set; }
 
+    /// <summary>The backend hasn't been started (or the next Artisan step is held) until a repair finishes.</summary>
+    public bool WaitingForRepair { get; set; }
+
     public int Made => Math.Max(0, CurrentCount - StartCount);
     public int Wanted => TargetCount - StartCount;
 }
@@ -51,6 +54,7 @@ public sealed class CraftCoordinator
     private static readonly TimeSpan ArtisanStartTimeout = TimeSpan.FromSeconds(15);
 
     private readonly InventoryTracker tracker;
+    private readonly RepairService repair;
     private readonly ICallGateSubscriber<ushort, int, object> artisanCraft;
     private readonly ICallGateSubscriber<bool> artisanBusy;
     private readonly ICallGateSubscriber<bool, object> artisanStop;
@@ -63,9 +67,10 @@ public sealed class CraftCoordinator
     /// <summary>Fired once when a job's items have all been made.</summary>
     public event Action<CraftJob>? Finished;
 
-    public CraftCoordinator(InventoryTracker tracker)
+    public CraftCoordinator(InventoryTracker tracker, RepairService repair)
     {
         this.tracker = tracker;
+        this.repair = repair;
         var pi = Plugin.PluginInterface;
         artisanCraft = pi.GetIpcSubscriber<ushort, int, object>("Artisan.CraftItem");
         artisanBusy = pi.GetIpcSubscriber<bool>("Artisan.IsBusy");
@@ -115,19 +120,37 @@ public sealed class CraftCoordinator
             Steps = backend == CraftBackend.Artisan ? ArtisanSteps(opp, crafts) : [],
         };
 
+        if (backend == CraftBackend.Vulcan && !VulcanAvailable) return "GatherBuddy Reborn isn't loaded.";
+        if (backend == CraftBackend.Artisan && !ArtisanAvailable) return "Artisan isn't loaded.";
+
+        if (repair.NeedsRepair)
+        {
+            // Repair first; Update() launches the backend once gear is fixed.
+            job.WaitingForRepair = true;
+            job.Status = "Repairing gear before starting...";
+            repair.Start();
+            Job = job;
+            return null;
+        }
+
+        var error = Launch(job);
+        if (error == null) Job = job;
+        return error;
+    }
+
+    private string? Launch(CraftJob job)
+    {
         try
         {
-            switch (backend)
+            switch (job.Backend)
             {
                 case CraftBackend.Vulcan:
-                    if (!VulcanAvailable) return "GatherBuddy Reborn isn't loaded.";
-                    if (!Plugin.CommandManager.ProcessCommand($"/vulcan craft {opp.Recipe.RecipeId} {crafts}"))
+                    if (!Plugin.CommandManager.ProcessCommand($"/vulcan craft {job.Opportunity.Recipe.RecipeId} {job.Crafts}"))
                         return "GatherBuddy Reborn didn't accept /vulcan craft. Is it up to date?";
                     job.Status = "Vulcan is gathering and crafting. Watch its window for progress.";
                     break;
 
                 case CraftBackend.Artisan:
-                    if (!ArtisanAvailable) return "Artisan isn't loaded.";
                     StartArtisanStep(job);
                     break;
             }
@@ -138,13 +161,13 @@ public sealed class CraftCoordinator
             return $"Couldn't start: {e.Message}";
         }
 
-        Job = job;
         return null;
     }
 
     public void Stop()
     {
         if (Job is not { State: CraftJobState.Running } job) return;
+        repair.Stop();
         try
         {
             if (job.Backend == CraftBackend.Artisan) artisanStop.InvokeAction(true);
@@ -181,6 +204,34 @@ public sealed class CraftCoordinator
         var now = DateTime.UtcNow;
         if (now < nextPoll) return;
         nextPoll = now.AddSeconds(1);
+
+        if (job.WaitingForRepair)
+        {
+            if (repair.IsBusy)
+            {
+                job.Status = repair.Status;
+                return;
+            }
+            if (repair.Failed)
+            {
+                job.State = CraftJobState.Failed;
+                job.Status = repair.Status;
+                return;
+            }
+
+            job.WaitingForRepair = false;
+            if (job.Backend == CraftBackend.Artisan && job.StepIndex > 0)
+            {
+                StartArtisanStep(job); // resume the step that was held for the repair
+                return;
+            }
+            if (Launch(job) is { } error)
+            {
+                job.State = CraftJobState.Failed;
+                job.Status = error;
+            }
+            return;
+        }
 
         job.CurrentCount = CountResult(job.Opportunity.Item.Id);
         if (job.CurrentCount >= job.TargetCount)
@@ -245,6 +296,15 @@ public sealed class CraftCoordinator
             job.State = CraftJobState.Finished;
             job.Status = job.Made >= job.Wanted ? $"Done: made {job.Made}." : $"Artisan stopped after making {job.Made} of {job.Wanted}.";
             Finished?.Invoke(job);
+            return;
+        }
+
+        if (repair.NeedsRepair)
+        {
+            // Between Artisan steps is a safe point to repair; the step starts once gear is fixed.
+            job.WaitingForRepair = true;
+            job.Status = "Repairing gear before the next step...";
+            repair.Start();
             return;
         }
 

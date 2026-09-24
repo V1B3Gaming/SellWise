@@ -16,8 +16,12 @@ public sealed class RecipeDb
     public IReadOnlySet<uint> Gatherable { get; }
     public IReadOnlySet<uint> VendorSold { get; }
 
-    private RecipeDb(List<RecipeInfo> recipes, HashSet<uint> gatherable, HashSet<uint> vendorSold)
+    /// <summary>Crafting foods and medicines (NQ and HQ versions).</summary>
+    public IReadOnlyList<Consumable> Consumables { get; }
+
+    private RecipeDb(List<RecipeInfo> recipes, HashSet<uint> gatherable, HashSet<uint> vendorSold, List<Consumable> consumables)
     {
+        Consumables = consumables;
         Recipes = recipes;
         ByResult = recipes.GroupBy(r => r.ResultItemId).ToDictionary(g => g.Key, g => g.OrderBy(r => r.Level).First());
         Gatherable = gatherable;
@@ -28,6 +32,7 @@ public sealed class RecipeDb
     {
         var data = Plugin.DataManager;
 
+        var refine = data.GetExcelSheet<CollectablesShopRefine>();
         var recipes = new List<RecipeInfo>();
         foreach (var r in data.GetExcelSheet<Recipe>())
         {
@@ -42,6 +47,19 @@ public sealed class RecipeDb
             }
             if (ingredients.Count == 0) continue;
 
+            CraftRecipe? craft = null;
+            if (r.RecipeLevelTable.ValueNullable is { } t)
+            {
+                craft = new CraftRecipe((int)t.RowId, t.ClassJobLevel,
+                    t.Difficulty * r.DifficultyFactor / 100, (int)(t.Quality * r.QualityFactor / 100), t.Durability * r.DurabilityFactor / 100,
+                    t.ProgressDivider, t.QualityDivider, t.ProgressModifier, t.QualityModifier, r.RequiredCraftsmanship, r.RequiredControl);
+            }
+
+            // Scrip collectables: collectability = quality / 10. Other collectable kinds just aim for max quality.
+            int[]? collectable = null;
+            if (r.CollectableMetadataKey == 1 && refine.GetRowOrDefault(r.CollectableMetadata.RowId) is { HighCollectability: > 0 } th)
+                collectable = [th.LowCollectability * 10, th.MidCollectability * 10, th.HighCollectability * 10];
+
             recipes.Add(new RecipeInfo(
                 r.RowId,
                 r.ItemResult.RowId,
@@ -53,7 +71,9 @@ public sealed class RecipeDb
                 r.IsSpecializationRequired,
                 r.SecretRecipeBook.RowId,
                 ingredients,
-                r.Quest.RowId));
+                r.Quest.RowId,
+                craft,
+                collectable));
         }
 
         var gatherable = new HashSet<uint>();
@@ -71,7 +91,46 @@ public sealed class RecipeDb
             }
         }
 
-        Plugin.Log.Information($"Loaded {recipes.Count} recipes, {gatherable.Count} gatherable items, {vendorSold.Count} vendor items");
-        return new RecipeDb(recipes, gatherable, vendorSold);
+        var consumables = LoadConsumables();
+        Plugin.Log.Information($"Loaded {recipes.Count} recipes, {gatherable.Count} gatherable items, {vendorSold.Count} vendor items, {consumables.Count} crafting consumables");
+        return new RecipeDb(recipes, gatherable, vendorSold, consumables);
+    }
+
+    private const uint ParamCraftsmanship = 70, ParamControl = 71, ParamCP = 11;
+    private const uint ActionFood = 844, ActionFoodAlt = 845, ActionMedicine = 846;
+
+    private static List<Consumable> LoadConsumables()
+    {
+        var data = Plugin.DataManager;
+        var foods = data.GetExcelSheet<ItemFood>();
+        var result = new List<Consumable>();
+        foreach (var item in data.GetExcelSheet<Item>())
+        {
+            if (item.ItemAction.ValueNullable is not { } action) continue;
+            var type = action.Action.RowId;
+            if (type != ActionFood && type != ActionFoodAlt && type != ActionMedicine) continue;
+            if (action.Data.Count < 2 || foods.GetRowOrDefault(action.Data[1]) is not { } food) continue;
+
+            StatBonus Bonus(uint param, bool hq)
+            {
+                foreach (var p in food.Params)
+                {
+                    if (p.BaseParam.RowId != param) continue;
+                    return hq ? new StatBonus(p.ValueHQ, p.MaxHQ, p.IsRelative) : new StatBonus(p.Value, p.Max, p.IsRelative);
+                }
+                return StatBonus.None;
+            }
+
+            if (Bonus(ParamCraftsmanship, false) == StatBonus.None && Bonus(ParamControl, false) == StatBonus.None && Bonus(ParamCP, false) == StatBonus.None)
+                continue;
+
+            var name = item.Name.ExtractText();
+            var medicine = type == ActionMedicine;
+            result.Add(new Consumable(item.RowId, name, false, medicine, Bonus(ParamCraftsmanship, false), Bonus(ParamControl, false), Bonus(ParamCP, false)));
+            if (item.CanBeHq)
+                result.Add(new Consumable(item.RowId, name, true, medicine, Bonus(ParamCraftsmanship, true), Bonus(ParamControl, true), Bonus(ParamCP, true)));
+        }
+
+        return result;
     }
 }

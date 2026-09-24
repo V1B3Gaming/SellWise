@@ -39,6 +39,18 @@ public sealed class Configuration : IPluginConfiguration
     /// <summary>Crafting jobs (by CraftType index) hidden in the profit finder.</summary>
     public HashSet<int> HiddenCraftJobs { get; set; } = [];
 
+    /// <summary>Repair gear before and during craft jobs when any piece drops below <see cref="RepairThreshold"/>%.</summary>
+    public bool AutoRepair { get; set; } = true;
+    public int RepairThreshold { get; set; } = 30;
+    public bool AllowSelfRepair { get; set; } = true;
+    public bool AllowNpcRepair { get; set; } = true;
+
+    /// <summary>Crafter stats per character (content id) and job (0 = CRP … 7 = CUL), saved when seen without buffs.</summary>
+    public Dictionary<ulong, Dictionary<int, Services.SavedCrafterStats>> CrafterStats { get; set; } = [];
+
+    /// <summary>UI accent: violet, teal or silver.</summary>
+    public string Accent { get; set; } = "violet";
+
     /// <summary>City aetherytes excluded from "Teleport to a city". Stored as exclusions so new cities default to on.</summary>
     public HashSet<uint> DisabledTeleportCities { get; set; } = [];
 
