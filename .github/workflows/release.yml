@@ -39,6 +39,10 @@ jobs:
       - name: Build
         run: dotnet build SellWise/SellWise.csproj -c Release -p:Version=${{ steps.version.outputs.full }}
 
+      - name: Add licence notices to the package
+        shell: pwsh
+        run: Compress-Archive -Path LICENSE, THIRD-PARTY-NOTICES.md -Update -DestinationPath SellWise/bin/Release/SellWise/latest.zip
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:

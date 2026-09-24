@@ -128,6 +128,12 @@ dotnet test SellWise.Tests
 
 Market data from [Universalis](https://universalis.app). The crafting math follows the [Teamcraft simulator](https://github.com/ffxiv-teamcraft/simulator). FINAL FANTASY XIV © SQUARE ENIX CO., LTD. SellWise is a fan project and isn't affiliated with Square Enix.
 
+## License
+
+SellWise is copyright © 2026 VIB3 and released under the [GNU Affero General Public License v3.0 or later](LICENSE). You're free to use, change and share it; if you share a modified version, share its source under the same licence.
+
+It bundles [ECommons](https://github.com/NightmareXIV/ECommons), which is MIT-licensed; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 ## AI-generated code
 
 SellWise's code, tests, icon and the screenshot renders in this README were made with an AI assistant (Anthropic's Claude), directed and reviewed by the project owner. The core logic has automated tests, but the parts that drive the game (repairs, window clicks, teleports and crafting hand-offs) have had limited in-game testing. Please use it with that in mind, and open an issue if something acts up.
