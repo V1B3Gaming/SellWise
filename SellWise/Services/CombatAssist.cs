@@ -13,7 +13,7 @@ public sealed class CombatAssist
 {
     // Values from WrathCombo.API: AutoRotationConfigOption, DPSRotationMode, SetResult.
     private enum WrathOption { InCombatOnly = 0, DPSRotationMode = 1, OnlyAttackInCombat = 13 }
-    private enum WrathResult { Ignored = -1, Okay = 0, OkayWorking = 1 }
+    private enum WrathResult { Ignored = -1, Okay = 0, OkayWorking = 1, Duplicate = 13 }
     private const int WrathDpsManual = 0;
 
     // RotationSolver Reborn's StateCommandType.
@@ -56,21 +56,34 @@ public sealed class CombatAssist
         {
             try
             {
-                lease ??= wrathRegister.InvokeFunc("SellWise", "SellWise");
+                // Always start from a fresh lease: WrathCombo hands a plugin back its old lease when it registers
+                // again, and a lease left half set up (by an earlier failed start) throws on the next use.
+                if (wrathRegister.InvokeFunc("SellWise", "SellWise") is { } leftover) wrathRelease.InvokeAction(leftover);
+                lease = wrathRegister.InvokeFunc("SellWise", "SellWise");
                 if (lease is not { } l) return "WrathCombo wouldn't lend its auto-rotation (check its IPC settings, or whether you revoked SellWise).";
+
+                // Order matters: WrathCombo must be told to turn auto-rotation on before any of its options are set,
+                // or it throws (it looks up the on/off entry as soon as a lease controls an option).
+                var result = wrathSetState.InvokeFunc(l, true);
+                if (result is not (WrathResult.Okay or WrathResult.OkayWorking or WrathResult.Duplicate))
+                {
+                    ReleaseWrath();
+                    return $"WrathCombo refused to turn on auto-rotation ({result}).";
+                }
+                wrathJobReady.InvokeFunc(l);
                 wrathConfig.InvokeFunc(l, WrathOption.InCombatOnly, false);
                 wrathConfig.InvokeFunc(l, WrathOption.OnlyAttackInCombat, false);
                 wrathConfig.InvokeFunc(l, WrathOption.DPSRotationMode, WrathDpsManual); // attack what SellWise targets
-                wrathJobReady.InvokeFunc(l);
-                var result = wrathSetState.InvokeFunc(l, true);
-                if (result is not (WrathResult.Okay or WrathResult.OkayWorking)) return $"WrathCombo refused to turn on auto-rotation ({result}).";
                 active = "WrathCombo";
                 return null;
             }
             catch (Exception e)
             {
                 Plugin.Log.Warning(e, "WrathCombo IPC failed");
-                if (!RsrAvailable) return $"Couldn't talk to WrathCombo: {e.Message}";
+                ReleaseWrath(); // a half-set-up lease would fail the same way next time
+                if (!RsrAvailable)
+                    return $"WrathCombo wouldn't start its auto-rotation ({(e.InnerException ?? e).Message}). " +
+                           "Try again, or check WrathCombo's auto-rotation settings.";
             }
         }
         if (RsrAvailable)
@@ -88,6 +101,21 @@ public sealed class CombatAssist
             }
         }
         return "Hunting needs WrathCombo or RotationSolver Reborn to do the fighting.";
+    }
+
+    /// <summary>Gives the WrathCombo lease back, so the next attempt starts from a clean one.</summary>
+    private void ReleaseWrath()
+    {
+        if (lease is not { } l) return;
+        try
+        {
+            wrathRelease.InvokeAction(l);
+        }
+        catch (Exception e)
+        {
+            Plugin.Log.Warning(e, "Releasing the WrathCombo lease failed");
+        }
+        lease = null;
     }
 
     /// <summary>Hands auto-rotation back (WrathCombo restores your own settings).</summary>
