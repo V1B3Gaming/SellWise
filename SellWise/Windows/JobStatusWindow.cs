@@ -81,6 +81,12 @@ public sealed class JobStatusWindow : Window
             Theme.Muted("Changing it now takes effect from the next craft.");
             ImGui.Separator();
         }
+        if (job is { Backend: CraftBackend.Vulcan, Destination: not null, State: CraftJobState.Running } && plugin.GbrSettings.ExtraTeleports is { } extra)
+        {
+            ImGui.TextColored(Theme.Hold, Theme.Fit("GatherBuddy will send you to the inn first: an extra teleport (hover for the fix)", Width));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(extra);
+            ImGui.Separator();
+        }
         switch (phase)
         {
             case JobPhase.Repairing:

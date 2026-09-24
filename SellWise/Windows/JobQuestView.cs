@@ -236,6 +236,11 @@ public sealed class JobQuestView
                 ImGui.SetTooltip("Once the gathering's done, SellWise heads to the quest giver (teleport, the aethernet with Lifestream,\n" +
                                  "then walking with vnavmesh) and Artisan crafts there, so you can hand the items straight in." +
                                  (QuestTravel.LifestreamAvailable ? "" : "\nInstall Lifestream for quest givers that are off the aethernet (Old Gridania, the Steps of Thal...)."));
+            if (atGiver && CraftCoordinator.VulcanAvailable && plugin.GbrSettings.ExtraTeleports is { } extra)
+            {
+                ImGui.TextColored(Theme.Hold, Theme.Fit("GatherBuddy will send you to the inn first: an extra teleport (hover for the fix)", ImGui.GetContentRegionAvail().X));
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(extra);
+            }
             ImGui.Spacing();
             using (ImRaii.Disabled(plugin.Crafter.IsRunning))
             {

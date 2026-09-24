@@ -181,6 +181,7 @@ dotnet test SellWise.Tests
 - If you turn that off, set GatherBuddy's crafter to **Standard Solver** for max quality (`/vulcan`, Settings, Solver Mode). On Pure Raphael, GatherBuddy only plans for normal-quality materials, so crafts that use the HQ parts it just made get no quality at all. SellWise reads that setting and warns you before you start.
 - Hunting automates combat in the open world, which is the most visible kind of automation. Stay at your keyboard, and keep in mind it's against the game's terms like any automation plugin. SellWise leaves monsters other players are already fighting alone.
 - Mob drop locations come from Garland Tools and are community-gathered, so some items have no listed drops and a few spots may be out of date.
+- GatherBuddy's "Go home when done" and "Go home when idle" settings (on by default) send you home, or to the inn if you have no house, after gathering. With "Craft next to the quest giver" that means two teleports, so turn them off in `/gbr`, Config tab. SellWise shows a warning while either is on.
 - To save gil on teleports, SellWise skips the teleport when you're already in the right zone, takes the free aethernet (with Lifestream) when you're already in the same city, prefers hunting spots in the zone you're in or one another hunt already needs, and does all the hunts in one zone before moving on.
 - Prices come from what other players have uploaded to Universalis. Rarely-checked items can have stale prices.
 

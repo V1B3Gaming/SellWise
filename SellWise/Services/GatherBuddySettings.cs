@@ -25,6 +25,8 @@ public sealed class GatherBuddySettings
     private DateTime lastCheck;
     private DateTime stamp;
     private VulcanSolver solver = VulcanSolver.Unknown;
+    private bool goHomeWhenDone;
+    private bool goHomeWhenIdle;
 
     public GatherBuddySettings(DirectoryInfo sellWiseConfigDir)
         => file = new FileInfo(Path.Combine(sellWiseConfigDir.Parent?.FullName ?? sellWiseConfigDir.FullName, "GatherBuddyReborn.json"));
@@ -35,6 +37,23 @@ public sealed class GatherBuddySettings
         {
             Refresh();
             return solver;
+        }
+    }
+
+    /// <summary>
+    /// Why GatherBuddy spends extra teleports during SellWise jobs, or null. Its auto-gather "Go home when done" (and
+    /// "when idle") run Lifestream's '/li auto', which takes you to your house or the inn; SellWise then has to teleport
+    /// again to the quest giver.
+    /// </summary>
+    public string? ExtraTeleports
+    {
+        get
+        {
+            Refresh();
+            if (!goHomeWhenDone && !goHomeWhenIdle) return null;
+            var which = goHomeWhenDone && goHomeWhenIdle ? "\"Go home when done\" and \"Go home when idle\" are" : goHomeWhenDone ? "\"Go home when done\" is" : "\"Go home when idle\" is";
+            return $"GatherBuddy's {which} on, so after gathering it teleports you home (the inn, if you have no house) before SellWise " +
+                   "teleports you again to the quest giver. Turn it off in /gbr, Config tab, to save the extra teleport.";
         }
     }
 
@@ -74,6 +93,14 @@ public sealed class GatherBuddySettings
                      && raphael.TryGetProperty("SolverMode", out var mode) && mode.TryGetInt32(out var value)
                 ? (VulcanSolver)value
                 : VulcanSolver.PureRaphael; // GatherBuddy's default when the setting has never been saved
+
+            // Both default to on in GatherBuddy.
+            goHomeWhenDone = goHomeWhenIdle = true;
+            if (doc.RootElement.TryGetProperty("AutoGatherConfig", out var gather))
+            {
+                if (gather.TryGetProperty("GoHomeWhenDone", out var done) && done.ValueKind is JsonValueKind.True or JsonValueKind.False) goHomeWhenDone = done.GetBoolean();
+                if (gather.TryGetProperty("GoHomeWhenIdle", out var idle) && idle.ValueKind is JsonValueKind.True or JsonValueKind.False) goHomeWhenIdle = idle.GetBoolean();
+            }
         }
         catch (Exception e)
         {
