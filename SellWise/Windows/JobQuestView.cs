@@ -347,7 +347,8 @@ public sealed class JobQuestView
     private void Start(List<QueuedJob> jobs)
     {
         var what = jobs.Count == 1 ? jobs[0].Opp.Item.Name : $"{jobs.Count} quest items";
-        startError = plugin.StartJob(what, jobs.Select(j => (j.Plan ?? j.Opp, j.Crafts)).ToList(), () => plugin.Crafter.StartAll(jobs));
+        startError = plugin.StartJob(what, jobs.Select(j => (j.Plan ?? j.Opp, j.Crafts)).ToList(), () => plugin.Crafter.StartAll(jobs),
+            gatherAllFirst: jobs);
     }
 
     private void DrawRunningBanner(CraftJob job)

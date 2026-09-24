@@ -143,9 +143,10 @@ public sealed class Plugin : IDalamudPlugin
     /// Starts a gather-and-craft job: hunts any monster-only materials that aren't in your bags first, then runs
     /// <paramref name="launch"/> (GatherBuddy and Artisan). Opens the progress window when it's under way.
     /// </summary>
-    public string? StartJob(string what, IReadOnlyList<(CraftOpportunity Plan, int Crafts)> plans, Func<string?> launch)
+    public string? StartJob(string what, IReadOnlyList<(CraftOpportunity Plan, int Crafts)> plans, Func<string?> launch,
+        IReadOnlyList<QueuedJob>? gatherAllFirst = null)
     {
-        var error = Runner.Start(what, plans, launch);
+        var error = Runner.Start(what, plans, launch, gatherAllFirst);
         if (error == null) MinimizeToJob();
         return error;
     }
@@ -248,6 +249,8 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnCraftFinished(CraftJob job)
     {
+        if (Runner.IsBusy) return; // part of a bigger job (gathering for several items): keep going
+
         if (Crafter.Queued > 0) return; // more queued: carry on without popping SellWise back up
 
         if (job.Opportunity.Recipe.CollectableQuality != null)

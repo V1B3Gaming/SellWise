@@ -7,18 +7,23 @@ namespace SellWise.Services;
 
 /// <summary>
 /// Starts a gather-and-craft job the whole way through: works out what's still missing after what's in your bags, hunts
-/// any materials that only drop from monsters, then hands over to GatherBuddy and Artisan for the rest. Without this,
-/// a recipe needing a hide would gather everything else and stall.
+/// any materials that only drop from monsters, then hands over to GatherBuddy and Artisan for the rest.
+/// <para>
+/// With several items to make (a quest wanting more than one craft), everything is gathered first and nothing is
+/// crafted until every item's materials are in your bags; then Artisan crafts them one after another.
+/// </para>
 /// </summary>
 public sealed class JobRunner
 {
     private static readonly TimeSpan LookupWait = TimeSpan.FromSeconds(20);
+    private const int MaxTopUps = 3;
 
     private enum Step
     {
         Idle,
         Lookup,
         Hunting,
+        Gathering,
     }
 
     private sealed record Hunt(uint ItemId, string Name, int Missing, MobSpot Spot);
@@ -28,11 +33,16 @@ public sealed class JobRunner
     private readonly MobDropService drops;
     private readonly InventoryTracker tracker;
     private readonly Queue<Hunt> hunts = new();
+    private readonly Queue<(CraftOpportunity Opp, int Crafts, CraftOpportunity Plan)> gathers = new();
     private List<(uint ItemId, string Name, int Missing)> candidates = [];
+    private IReadOnlyList<(CraftOpportunity Plan, int Crafts)> plans = [];
+    private IReadOnlyList<QueuedJob>? together;
     private Func<string?>? launch;
     private Step step = Step.Idle;
     private DateTime started;
     private int huntCount;
+    private int gatherCount;
+    private int topUps;
 
     public JobRunner(CraftCoordinator crafter, MobHunter hunter, MobDropService drops, InventoryTracker tracker)
     {
@@ -55,31 +65,36 @@ public sealed class JobRunner
     /// <summary>
     /// Prepares and starts a job. <paramref name="plans"/> are costed the way GatherBuddy gathers (what has to be in
     /// your bags before crafting); <paramref name="launch"/> starts the gathering and crafting once any hunting is done.
+    /// Pass <paramref name="gatherAllFirst"/> (several items) to gather for all of them before crafting any.
     /// Returns an error, or null when it's under way. Must be called on the framework thread.
     /// </summary>
-    public string? Start(string what, IReadOnlyList<(CraftOpportunity Plan, int Crafts)> plans, Func<string?> launch)
+    public string? Start(string what, IReadOnlyList<(CraftOpportunity Plan, int Crafts)> plans, Func<string?> launch,
+        IReadOnlyList<QueuedJob>? gatherAllFirst = null)
     {
         if (IsBusy) return "SellWise is already getting a job ready.";
         if (crafter.IsRunning) return "A craft job is already running.";
         if (hunter.IsBusy) return "Finish or stop the hunt first.";
 
-        // Raw materials across every job, less what's already in your bags. Parts you hold already
-        // take their own materials off the list (see NeedsAfterWhatYouHave).
-        candidates = plans
-            .SelectMany(p => crafter.LeafNeeds(p.Plan, p.Crafts))
-            .Where(x => x.Line.Source is MaterialSource.Buy or MaterialSource.Unknown)
-            .GroupBy(x => x.Line.ItemId)
-            .Select(g => (g.Key, g.First().Line.Name, g.Sum(x => x.Need) - tracker.CountInBags(g.Key)))
-            .Where(x => x.Item3 > 0)
-            .ToList();
-
+        this.plans = plans;
+        together = gatherAllFirst is { Count: > 1 } && CraftCoordinator.VulcanAvailable && CraftCoordinator.ArtisanAvailable ? gatherAllFirst : null;
         What = what;
         Failed = false;
         huntCount = 0;
+        topUps = 0;
         hunts.Clear();
-        if (candidates.Count == 0) return launch();
-
+        gathers.Clear();
         this.launch = launch;
+
+        // Raw materials GatherBuddy can't gather, across every item, less what's already in your bags. Parts you
+        // hold already take their own materials off the list (see NeedsAfterWhatYouHave).
+        candidates = Shortfall().Where(x => x.Line.Source is MaterialSource.Buy or MaterialSource.Unknown)
+            .Select(x => (x.Line.ItemId, x.Line.Name, x.Missing)).ToList();
+        if (candidates.Count == 0)
+        {
+            AfterHunting();
+            return Failed ? Status : null;
+        }
+
         started = DateTime.UtcNow;
         Status = "Checking which materials only drop from monsters...";
         step = Step.Lookup;
@@ -90,9 +105,10 @@ public sealed class JobRunner
     {
         if (!IsBusy) return;
         hunter.Stop();
+        if (step == Step.Gathering) crafter.Stop();
         hunts.Clear();
-        step = Step.Idle;
-        Status = "Stopped before crafting.";
+        gathers.Clear();
+        Finish("Stopped before crafting.", failed: false);
     }
 
     /// <summary>Called from Framework.Update.</summary>
@@ -105,23 +121,42 @@ public sealed class JobRunner
                 var lookups = candidates.Select(c => (c, Spots: drops.Spots(c.ItemId))).ToList();
                 if (lookups.Any(l => l.Spots == null) && DateTime.UtcNow - started < LookupWait) return;
 
-                var notes = new List<string>();
+                var problems = new List<string>();
+                var toBuy = new List<string>();
+                var planned = new List<Hunt>();
+                var here = Plugin.ClientState.TerritoryType;
                 foreach (var (c, spots) in lookups)
                 {
-                    if (spots is not { Count: > 0 }) continue; // not a monster drop (a market item): "Buy first" covers it
-                    var (spot, problem) = MobHunter.Choose(spots);
-                    if (spot != null) hunts.Enqueue(new Hunt(c.ItemId, c.Name, c.Missing, spot));
-                    else notes.Add($"{c.Name}: {problem}");
+                    if (spots is not { Count: > 0 })
+                    {
+                        toBuy.Add($"{c.Name} x{c.Missing}");
+                        continue;
+                    }
+                    // Fewer teleports: the zone you're in, or one another hunt already goes to, wins if it's suitable.
+                    var (spot, problem) = MobHunter.Choose(spots, [here, .. planned.Select(p => p.Spot.TerritoryId)]);
+                    if (spot != null) planned.Add(new Hunt(c.ItemId, c.Name, c.Missing, spot));
+                    else problems.Add($"{c.Name}: {problem}");
                 }
-                if (notes.Count > 0)
+                if (toBuy.Count > 0)
                 {
-                    Finish($"Can't hunt everything this needs, so nothing was started. {string.Join(" ", notes)}", failed: true);
+                    // GatherBuddy can't get these either; starting would gather the rest and stall.
+                    Finish($"Buy these first (SellWise never buys for you): {string.Join(", ", toBuy)}. Nothing was started.", failed: true);
                     return;
                 }
+                if (problems.Count > 0)
+                {
+                    Finish($"Can't hunt everything this needs, so nothing was started. {string.Join(" ", problems)}", failed: true);
+                    return;
+                }
+
+                // One trip per zone, starting with the one you're in.
+                foreach (var h in planned.OrderBy(h => h.Spot.TerritoryId == here ? 0 : 1)
+                             .ThenBy(h => planned.FindIndex(p => p.Spot.TerritoryId == h.Spot.TerritoryId)))
+                    hunts.Enqueue(h);
                 huntCount = hunts.Count;
                 if (hunts.Count == 0)
                 {
-                    Launch();
+                    AfterHunting();
                     return;
                 }
                 step = Step.Hunting;
@@ -141,10 +176,34 @@ public sealed class JobRunner
                     return;
                 }
                 if (hunts.Count > 0) NextHunt();
-                else Launch();
+                else AfterHunting();
+                break;
+
+            case Step.Gathering:
+                if (crafter.IsRunning)
+                {
+                    Status = $"Gathering for everything first ({gatherCount - gathers.Count} of {gatherCount}): {crafter.Job?.Status}";
+                    return;
+                }
+                if (crafter.Job is { State: CraftJobState.Failed or CraftJobState.Stopped } job)
+                {
+                    Finish($"Gathering stopped: {job.Status} Nothing was crafted.", failed: true);
+                    return;
+                }
+                if (gathers.Count > 0) NextGather();
+                else CheckEverythingGathered();
                 break;
         }
     }
+
+    /// <summary>Raw materials still missing across every item, after what's in your bags.</summary>
+    private List<(MaterialLine Line, int Missing)> Shortfall()
+        => plans
+            .SelectMany(p => crafter.LeafNeeds(p.Plan, p.Crafts))
+            .GroupBy(x => x.Line.ItemId)
+            .Select(g => (g.First().Line, g.Sum(x => x.Need) - tracker.CountInBags(g.Key)))
+            .Where(x => x.Item2 > 0)
+            .ToList();
 
     private void NextHunt()
     {
@@ -153,11 +212,87 @@ public sealed class JobRunner
             Finish($"Couldn't start hunting {h.Name}: {error}", failed: true);
     }
 
-    private void Launch()
+    private void AfterHunting()
     {
         hunter.Dismiss(); // the craft job's progress takes over the window
-        var error = launch?.Invoke();
-        Finish(error ?? (huntCount > 0 ? "Hunting done; gathering and crafting the rest." : ""), failed: error != null);
+        if (together == null)
+        {
+            var error = launch?.Invoke();
+            Finish(error ?? (huntCount > 0 ? "Hunting done; gathering and crafting the rest." : ""), failed: error != null);
+            return;
+        }
+
+        // Several items: gather for all of them now, craft later.
+        foreach (var job in together)
+            gathers.Enqueue((job.Opp, job.Crafts, job.Plan ?? job.Opp));
+        gatherCount = gathers.Count;
+        step = Step.Gathering;
+        NextGather();
+    }
+
+    private void NextGather()
+    {
+        while (gathers.Count > 0)
+        {
+            var (opp, crafts, plan) = gathers.Dequeue();
+            var error = crafter.StartGatherOnly(opp, crafts, plan);
+            if (error == null)
+            {
+                step = Step.Gathering;
+                return;
+            }
+            if (error.StartsWith("You already have everything", StringComparison.Ordinal)) continue; // nothing to gather for this one
+            Finish($"Couldn't gather for {opp.Item.Name}: {error}", failed: true);
+            return;
+        }
+        CheckEverythingGathered();
+    }
+
+    /// <summary>
+    /// GatherBuddy plans each item against what's already in your bags, so two items sharing a material (shards, an
+    /// ore) come up short. Top that up before crafting anything.
+    /// </summary>
+    private void CheckEverythingGathered()
+    {
+        var shortfall = Shortfall();
+        if (shortfall.Count == 0)
+        {
+            StartCrafting();
+            return;
+        }
+        if (topUps >= MaxTopUps)
+        {
+            Finish("Still short of " + string.Join(", ", shortfall.Select(s => $"{s.Line.Name} x{s.Missing}")) +
+                   " after gathering, so nothing was crafted.", failed: true);
+            return;
+        }
+        topUps++;
+
+        // For each missing material, ask GatherBuddy to gather for the item that uses the most of it per craft,
+        // with enough crafts that its plan covers the shortfall on top of what's already in your bags.
+        foreach (var (line, missing) in shortfall)
+        {
+            var best = plans
+                .Select(p => (p.Plan, PerCraft: crafter.LeafNeeds(p.Plan, 1).Where(x => x.Line.ItemId == line.ItemId).Sum(x => x.Need)))
+                .Where(x => x.PerCraft > 0)
+                .OrderByDescending(x => x.PerCraft)
+                .FirstOrDefault();
+            if (best.Plan == null) continue;
+            var crafts = (int)Math.Min(999, Math.Ceiling((tracker.CountInBags(line.ItemId) + missing) / (double)best.PerCraft));
+            gathers.Enqueue((best.Plan, crafts, best.Plan));
+        }
+        gatherCount = gathers.Count;
+        Status = $"Topping up materials shared between items ({string.Join(", ", shortfall.Select(s => s.Line.Name))})...";
+        NextGather();
+    }
+
+    private void StartCrafting()
+    {
+        // Artisan crafts from what's now in your bags, following the same plan GatherBuddy gathered for.
+        var jobs = together!.Select(j => new QueuedJob(j.Plan ?? j.Opp, j.Crafts, CraftBackend.Artisan, null, j.Destination)).ToList();
+        crafter.Dismiss();
+        var error = crafter.StartAll(jobs);
+        Finish(error ?? "Everything's gathered; crafting now.", failed: error != null);
     }
 
     private void Finish(string status, bool failed)

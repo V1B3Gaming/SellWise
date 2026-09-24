@@ -31,6 +31,7 @@ public sealed unsafe class QuestTravel
         Idle,
         LeaveCrafting,
         Teleport,
+        WalkToStop,
         WaitForCity,
         Aethernet,
         WaitForZone,
@@ -38,7 +39,10 @@ public sealed unsafe class QuestTravel
         Dismount,
     }
 
-    /// <summary>An aethernet stop: its Aetheryte row, the PlaceName Lifestream takes, where it stands, and its city's aetheryte.</summary>
+    /// <summary>
+    /// An aethernet stop (a shard, or the city's aetheryte itself): its Aetheryte row, the PlaceName Lifestream takes,
+    /// where it stands, and its city's aetheryte.
+    /// </summary>
     private sealed record Shard(uint AetheryteId, uint PlaceNameId, uint TerritoryId, Vector2 Position, uint MainAetheryteId);
 
     private readonly ICallGateSubscriber<bool> navIsReady;
@@ -60,6 +64,7 @@ public sealed unsafe class QuestTravel
     private readonly ICallGateSubscriber<Vector3, float, float, Vector3?> nearestPoint;
     private string fallback = "Crafting here instead.";
     private DateTime mountTried;
+    private Vector3? stopPosition;
 
     public QuestTravel()
     {
@@ -101,6 +106,7 @@ public sealed unsafe class QuestTravel
         Failed = false;
         walkRequested = false;
         mountTried = default;
+        stopPosition = null;
         if (IsNear(t))
         {
             Status = $"Next to {t.Name}.";
@@ -163,6 +169,10 @@ public sealed unsafe class QuestTravel
                 TickTeleport(t);
                 break;
 
+            case Step.WalkToStop:
+                TickWalkToStop();
+                break;
+
             case Step.WaitForCity:
             {
                 var city = shard == null ? t.TerritoryId : AetheryteTerritory(shard.MainAetheryteId);
@@ -213,6 +223,18 @@ public sealed unsafe class QuestTravel
         var ui = UIState.Instance();
         var aetherytes = Plugin.DataManager.GetExcelSheet<Aetheryte>();
 
+        // Free first: already in the same city (say New Gridania, heading for Old Gridania)? Walk to the nearest
+        // aethernet stop here and hop across instead of paying for a teleport.
+        if (FreeHop(t) is { } hop)
+        {
+            shard = hop.To;
+            stopPosition = new Vector3(hop.From.Position.X, float.NaN, hop.From.Position.Y);
+            walkRequested = false;
+            Status = $"Walking to the aethernet (saves a teleport)...";
+            Go(Step.WalkToStop);
+            return;
+        }
+
         // The zone has its own aetheryte: go straight to the one nearest the target (field zones have several).
         Shards();
         var target2d = new Vector2(t.Position.X, t.Position.Z);
@@ -246,6 +268,65 @@ public sealed unsafe class QuestTravel
         }
         shard = nearest;
         Teleport(nearest.MainAetheryteId, t);
+    }
+
+    /// <summary>A free aethernet route from where you stand to the target's zone, or null.</summary>
+    private (Shard From, Shard To)? FreeHop(TravelTarget t)
+    {
+        if (!LifestreamAvailable || Plugin.ObjectTable.LocalPlayer is not { } player) return null;
+        var stops = Shards();
+        var here = Plugin.ClientState.TerritoryType;
+        if (here == t.TerritoryId || !stops.TryGetValue(t.TerritoryId, out var there) || !stops.TryGetValue(here, out var mine)) return null;
+
+        var aetherytes = Plugin.DataManager.GetExcelSheet<Aetheryte>();
+        uint Group(Shard s) => aetherytes.GetRowOrDefault(s.AetheryteId)?.AethernetGroup ?? 0;
+
+        var target2d = new Vector2(t.Position.X, t.Position.Z);
+        var to = there.Where(s => Group(s) != 0).OrderBy(s => Vector2.Distance(s.Position, target2d)).FirstOrDefault();
+        if (to == null) return null;
+        var me = new Vector2(player.Position.X, player.Position.Z);
+        var from = mine.Where(s => Group(s) == Group(to) && s.PlaceNameId != to.PlaceNameId).OrderBy(s => Vector2.Distance(s.Position, me)).FirstOrDefault();
+        return from == null ? null : (from, to);
+    }
+
+    private void TickWalkToStop()
+    {
+        var player = Plugin.ObjectTable.LocalPlayer;
+        if (player == null || stopPosition is not { } stop) return;
+        if (!SafeNavReady()) return;
+
+        if (float.IsNaN(stop.Y))
+        {
+            Vector3? ground = null;
+            try { ground = nearestPoint.InvokeFunc(new Vector3(stop.X, player.Position.Y, stop.Z), 10, 200); } catch { /* vnavmesh not loaded */ }
+            if (ground is not { } g)
+            {
+                // Can't find the way to the shard: pay for the teleport after all.
+                shard = null;
+                Go(Step.Teleport);
+                return;
+            }
+            stopPosition = stop = g;
+        }
+
+        if (Vector3.Distance(player.Position, stop) <= 6f)
+        {
+            StopWalking();
+            Go(Step.Aethernet);
+            return;
+        }
+        if (!walkRequested)
+        {
+            walkRequested = moveCloseTo.InvokeFunc(stop, false, 4f);
+            if (!walkRequested)
+            {
+                shard = null;
+                Go(Step.Teleport);
+            }
+            return;
+        }
+        if (!pathIsRunning.InvokeFunc() && !pathfindInProgress.InvokeFunc() && Since() > TimeSpan.FromSeconds(2))
+            walkRequested = false;
     }
 
     private void Teleport(uint aetheryteId, TravelTarget t)
@@ -334,7 +415,17 @@ public sealed unsafe class QuestTravel
             foreach (var m in rows)
             {
                 if (m.DataType == AetheryteMarker)
-                    positions.TryAdd(m.DataKey.RowId, new Vector2((m.X - 1024f) / scale - map.OffsetX, (m.Y - 1024f) / scale - map.OffsetY));
+                {
+                    var p = new Vector2((m.X - 1024f) / scale - map.OffsetX, (m.Y - 1024f) / scale - map.OffsetY);
+                    positions.TryAdd(m.DataKey.RowId, p);
+                    // The city's own aetheryte is an aethernet stop too.
+                    if (aetherytes.GetRowOrDefault(m.DataKey.RowId) is { IsAetheryte: true, AethernetGroup: > 0 } cityAetheryte && cityAetheryte.AethernetName.RowId != 0
+                        && cityAetheryte.Territory.RowId == territory.RowId)
+                    {
+                        if (!result.TryGetValue(territory.RowId, out var mains)) result[territory.RowId] = mains = [];
+                        mains.Add(new Shard(cityAetheryte.RowId, cityAetheryte.AethernetName.RowId, territory.RowId, p, cityAetheryte.RowId));
+                    }
+                }
                 if (m.DataType != AethernetMarker || !byPlace.TryGetValue(m.DataKey.RowId, out var a) || a.Territory.RowId != territory.RowId) continue;
                 if (!mainByGroup.TryGetValue(a.AethernetGroup, out var main)) continue;
                 var pos = new Vector2((m.X - 1024f) / scale - map.OffsetX, (m.Y - 1024f) / scale - map.OffsetY);

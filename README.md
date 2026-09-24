@@ -89,7 +89,7 @@ The Craft section's third tab, **Job quests**, is for crafter and gatherer quest
 
 - **Where you stand:** every quest shows whether it's in your journal, ready to pick up, locked (and why: the level you need or the quest to finish first) or done. By default it lists the ones you can do now.
 - **What to hand in:** each item, how many, and whether it has to be high quality, with how many you already have. The game data says which items a quest takes but not how many, so SellWise reads the count from the quest's journal text; where the text doesn't say, it shows "?" and you set the number. Special materials the quest hands you are marked as such.
-- **Making it:** **Make** crafts one item, **Make all** does everything the quest still needs, and **Make everything** at the top does it for every quest you can do now, one job after another (GatherBuddy gathers, Artisan crafts). Items you only gather have a **Gather** button that sends you to the node with GatherBuddy.
+- **Making it:** **Make** crafts one item, **Make all** does everything the quest still needs, and **Make everything** at the top does it for every quest you can do now. With more than one item, SellWise gathers (and hunts) for all of them first and doesn't craft anything until every item's materials are in your bags, then Artisan crafts them one after another. Materials two items share are topped up before crafting starts. Items you only gather have a **Gather** button that sends you to the node with GatherBuddy.
 - **Crafting at the quest giver:** once the gathering's done, SellWise takes you to the quest giver before Artisan crafts, so you can hand the items straight in. It teleports to the zone's aetheryte, or for givers off the main aetheryte (Old Gridania, the Steps of Thal, the Upper Decks, the Pillars) teleports to the city and takes the aethernet with [Lifestream](https://github.com/NightmareXIV/Lifestream), then walks the rest with vnavmesh. Turn it off with "Craft next to the quest giver" on the quest.
 
 ### Hunting mob drops
@@ -181,6 +181,7 @@ dotnet test SellWise.Tests
 - If you turn that off, set GatherBuddy's crafter to **Standard Solver** for max quality (`/vulcan`, Settings, Solver Mode). On Pure Raphael, GatherBuddy only plans for normal-quality materials, so crafts that use the HQ parts it just made get no quality at all. SellWise reads that setting and warns you before you start.
 - Hunting automates combat in the open world, which is the most visible kind of automation. Stay at your keyboard, and keep in mind it's against the game's terms like any automation plugin. SellWise leaves monsters other players are already fighting alone.
 - Mob drop locations come from Garland Tools and are community-gathered, so some items have no listed drops and a few spots may be out of date.
+- To save gil on teleports, SellWise skips the teleport when you're already in the right zone, takes the free aethernet (with Lifestream) when you're already in the same city, prefers hunting spots in the zone you're in or one another hunt already needs, and does all the hunts in one zone before moving on.
 - Prices come from what other players have uploaded to Universalis. Rarely-checked items can have stale prices.
 
 ## Credits

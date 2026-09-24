@@ -74,8 +74,11 @@ public sealed unsafe class MobHunter
 
     public int Have => ItemId == 0 ? 0 : InventoryManager.Instance()->GetInventoryItemCount(ItemId) + InventoryManager.Instance()->GetInventoryItemCount(ItemId, true);
 
-    /// <summary>The easiest spot you can reach: an attuned zone, with monsters not far above your best combat level.</summary>
-    public static (MobSpot? Spot, string? Problem) Choose(IReadOnlyList<MobSpot> spots)
+    /// <summary>
+    /// The easiest spot you can reach: an attuned zone, with monsters not far above your best combat level. Zones in
+    /// <paramref name="prefer"/> (the one you're in, ones other hunts already go to) win when suitable: fewer teleports.
+    /// </summary>
+    public static (MobSpot? Spot, string? Problem) Choose(IReadOnlyList<MobSpot> spots, IReadOnlyCollection<uint>? prefer = null)
     {
         if (spots.Count == 0) return (null, "Nothing in the open world is known to drop this.");
         var level = BestCombatGearset() is { } g ? g.Level : 0;
@@ -86,7 +89,8 @@ public sealed unsafe class MobHunter
         var fair = reachable.Where(s => s.Mob.Level <= level + MaxLevelAbove).ToList();
         if (fair.Count == 0)
             return (null, level == 0 ? "You need a combat job gearset to hunt." : $"The monsters that drop it are level {reachable.Min(s => s.Mob.Level)}+; your best combat job is level {level}.");
-        return (fair.OrderBy(s => s.Mob.Level).First(), null);
+        var preferred = prefer == null ? [] : prefer.ToList();
+        return (fair.OrderBy(s => preferred.Contains(s.TerritoryId) ? preferred.IndexOf(s.TerritoryId) : int.MaxValue).ThenBy(s => s.Mob.Level).First(), null);
     }
 
     /// <summary>Must be called on the framework thread.</summary>
