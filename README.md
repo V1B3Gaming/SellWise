@@ -8,7 +8,7 @@ The window has a sidebar (Sell, Listings, Craft, Retainers, plus City, Repair an
 
 | Screen | Shows |
 |---|---|
-| **What to sell** | Every stack you own, grouped by item and quality, with a verdict, suggested price (click to copy), net gil after tax, vendor value, estimated days to sell, sales per day, recent median, and lowest listing (hover for the data-center cheapest). `*` marks the best picks for your free market slots. |
+| **What to sell** | Every stack you own, grouped by item and quality, with a verdict, suggested price (click to copy), net gil after tax, estimated days to sell, and a detail panel with lowest listing, recent median, sales per day, data-center cheapest and a recent-sales chart. A dot marks the best picks for your free market slots. |
 | **My listings** | Everything your retainers have on the board: **Undercut** (relist at X), **Raise price** (you're far below the next seller), or **OK**. |
 | **Craft for profit** | Scans every recipe you can make, ranks them by batch profit, and runs the gather-and-craft for you (see below). |
 | **Retainers** | Which retainers have been scanned and when, listing slots used, and gil. |
