@@ -257,7 +257,11 @@ public sealed class RecipeView
 
         using (ImRaii.Disabled(crafter.IsRunning || !CraftCoordinator.VulcanAvailable || nothingToGather))
         {
-            if (ImGui.Button(gatherOnlyLabel) && (startError = crafter.StartGatherOnly(o, quantity, plan)) == null) plugin.MinimizeToJob();
+            if (ImGui.Button(gatherOnlyLabel))
+            {
+                var crafts = quantity;
+                startError = plugin.StartJob(o.Item.Name, [(plan, crafts)], () => crafter.StartGatherOnly(o, crafts, plan));
+            }
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(!CraftCoordinator.VulcanAvailable ? "Install and enable GatherBuddy Reborn to use this."
@@ -278,8 +282,12 @@ public sealed class RecipeView
         var finishWithArtisan = Config.FinishWithArtisan && CraftCoordinator.ArtisanAvailable;
         using (ImRaii.Disabled(crafter.IsRunning || !o.Unlocked || !CraftCoordinator.VulcanAvailable))
         {
-            if (Theme.PrimaryButton(bothLabel) && (startError = crafter.Start(o, quantity, CraftBackend.Vulcan, finishWithArtisan ? plan : null)) == null)
-                plugin.MinimizeToJob();
+            if (Theme.PrimaryButton(bothLabel))
+            {
+                var crafts = quantity;
+                startError = plugin.StartJob(o.Item.Name, [(plan, crafts)],
+                    () => crafter.Start(o, crafts, CraftBackend.Vulcan, finishWithArtisan ? plan : null));
+            }
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(!CraftCoordinator.VulcanAvailable ? "Install and enable GatherBuddy Reborn to use this."

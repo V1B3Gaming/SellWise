@@ -545,14 +545,16 @@ public sealed class CraftCoordinator
     }
 
     /// <summary>
-    /// How much of each material line is needed for <paramref name="crafts"/> crafts. Intermediates you already hold
-    /// reduce (or remove) the need for their own sub-materials.
+    /// How much of each material line is still needed for <paramref name="crafts"/> crafts, after what's in your bags.
+    /// Parts you already hold reduce (or remove) the need for their own materials, so nothing is gathered or crafted
+    /// for them. Every line is returned, in order, including ones you need none of.
     /// </summary>
-    private IEnumerable<(MaterialLine Line, double Need)> Requirements(CraftOpportunity opp, int crafts)
+    public List<(MaterialLine Line, double Need)> NeedsAfterWhatYouHave(CraftOpportunity opp, int crafts)
     {
         // Lines are ordered parent-first, so a factor per depth tracks how much of the current parent still has to be made.
         var factors = new double[32];
         factors[0] = 1;
+        var result = new List<(MaterialLine, double)>();
         foreach (var m in opp.Materials)
         {
             if (m.Depth >= factors.Length - 1) continue;
@@ -562,15 +564,23 @@ public sealed class CraftCoordinator
                 var missing = Math.Max(0, need - tracker.CountInBags(m.ItemId));
                 factors[m.Depth + 1] = need > 0 ? factors[m.Depth] * missing / need : 0;
             }
-            if (need > 0) yield return (m, need);
+            result.Add((m, need));
         }
+        return result;
     }
+
+    private IEnumerable<(MaterialLine Line, double Need)> Requirements(CraftOpportunity opp, int crafts)
+        => NeedsAfterWhatYouHave(opp, crafts).Where(x => x.Need > 0);
 
     /// <summary>Materials that must be in your bags for Artisan: everything that isn't itself crafted along the way.</summary>
     private IEnumerable<(MaterialLine Line, double Need)> LeafMaterials(CraftOpportunity opp, int crafts)
         => Requirements(opp, crafts).Where(x => x.Line.Source != MaterialSource.Craft)
             .GroupBy(x => x.Line.ItemId)
             .Select(g => (g.First().Line, g.Sum(x => x.Need)));
+
+    /// <summary>Raw materials (not crafted along the way) the job needs in total, before subtracting your bags.</summary>
+    public List<(MaterialLine Line, int Need)> LeafNeeds(CraftOpportunity opp, int crafts)
+        => LeafMaterials(opp, crafts).Select(x => (x.Line, (int)Math.Ceiling(x.Need - 1e-9))).ToList();
 
     /// <summary>Units in your bags, counting NQ, HQ and collectables alike.</summary>
     private static unsafe int CountResult(uint itemId)

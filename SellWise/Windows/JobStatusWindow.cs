@@ -28,7 +28,7 @@ public sealed class JobStatusWindow : Window
         this.plugin = plugin;
     }
 
-    public override bool DrawConditions() => plugin.Crafter.Job != null || plugin.Hunter.HasResult;
+    public override bool DrawConditions() => plugin.Crafter.Job != null || plugin.Hunter.HasResult || plugin.Runner.IsBusy || plugin.Runner.Failed;
 
     public override void PreDraw() => theme = Theme.Push();
 
@@ -43,7 +43,8 @@ public sealed class JobStatusWindow : Window
         using var layout = Theme.PushLayout();
         if (plugin.Crafter.Job is not { } job)
         {
-            DrawHunt();
+            if (plugin.Hunter.HasResult) DrawHunt();
+            else DrawPreparing();
             return;
         }
 
@@ -203,6 +204,26 @@ public sealed class JobStatusWindow : Window
         if (job.Status.Length > 0) Theme.Wrapped(job.Status, Theme.Text3);
     }
 
+    private void DrawPreparing()
+    {
+        var runner = plugin.Runner;
+        ImGui.Dummy(new Vector2(Width, 0));
+        ImGui.TextUnformatted(Theme.Fit(runner.What.Length > 0 ? $"Getting ready: {runner.What}" : "Getting ready", Width));
+        ImGui.Separator();
+        Theme.Wrapped(runner.Status, runner.Failed ? Theme.Bad : Theme.Text2);
+        ImGui.Separator();
+        if (runner.IsBusy)
+        {
+            if (ImGui.Button("Stop")) runner.Stop();
+        }
+        else if (ImGui.Button("Close"))
+        {
+            IsOpen = false;
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Open SellWise")) plugin.ShowCraft();
+    }
+
     private void DrawHunt()
     {
         var hunter = plugin.Hunter;
@@ -221,10 +242,18 @@ public sealed class JobStatusWindow : Window
             ImGui.ProgressBar(hunter.Wanted > 0 ? Math.Clamp(hunter.Have / (float)hunter.Wanted, 0, 1) : 0, new Vector2(Width, 22), $"{hunter.Have} / {hunter.Wanted}");
         Theme.Muted($"{hunter.Kills} kills");
         Theme.Wrapped(hunter.Status, hunter.Failed ? Theme.Bad : Theme.Text2);
+        if (plugin.Runner.IsBusy)
+            Theme.Muted(Theme.Fit($"Then: {(plugin.Runner.HuntsLeft > 0 ? $"{plugin.Runner.HuntsLeft} more hunt(s), then " : "")}gather and craft {plugin.Runner.What}", Width));
+        else if (plugin.Runner.Failed)
+            Theme.Wrapped(plugin.Runner.Status, Theme.Bad);
         ImGui.Separator();
         if (hunter.IsBusy)
         {
-            if (ImGui.Button("Stop")) hunter.Stop();
+            if (ImGui.Button("Stop"))
+            {
+                plugin.Runner.Stop();
+                hunter.Stop();
+            }
         }
         else if (ImGui.Button("Close"))
         {

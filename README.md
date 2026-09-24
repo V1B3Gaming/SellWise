@@ -67,7 +67,7 @@ Hit **Scan** and SellWise prices every recipe that sells on your world. It takes
 
 ![Craft pipeline](docs/images/craft-running.png)
 
-**Gather + craft** hands the job to GatherBuddy Reborn, which goes and gathers whatever's missing and grabs anything sitting on your retainers. If you have Artisan too, SellWise takes the crafting from there: once GatherBuddy has everything, SellWise stops it (never in the middle of a craft) and has Artisan make the parts and the item, pushing quality as high as it'll go. Without Artisan, GatherBuddy does the crafting itself. If you've already got the materials, **Craft with Artisan** skips straight to crafting. If you planned to buy something, SellWise lists what to pick up first. It never buys for you, so anything that isn't in your bags when the job starts, GatherBuddy gathers or crafts instead.
+**Gather + craft** first checks what's already in your bags: materials you have, and parts you've already made (an ingot, some lumber), are used, and a part you hold takes its own materials off the list, so nothing is gathered or crafted twice. The materials list shows these as **In bags**. If anything still missing only drops from monsters, SellWise hunts it first (see below). Then GatherBuddy Reborn gathers the rest (it only takes from retainers if its retainer restock is on, so withdraw anything you want used). If you have Artisan too, SellWise takes the crafting from there: once GatherBuddy has everything, SellWise stops it (never in the middle of a craft) and has Artisan make the parts and the item, pushing quality as high as it'll go. Without Artisan, GatherBuddy does the crafting itself. If you've already got the materials, **Craft with Artisan** skips straight to crafting. If you planned to buy something, SellWise lists what to pick up first. It never buys for you, so anything that isn't in your bags when the job starts, GatherBuddy gathers or crafts instead.
 
 When it's done, SellWise pulls a fresh price so you know what to list at.
 
@@ -77,7 +77,7 @@ Once you press start, the main window tucks itself away and a small **SellWise p
 
 The **Any recipe** tab is for just making something: search any recipe (sellable or not), set how many, and go.
 
-- **Gather + craft:** GatherBuddy gathers the materials and pulls them from your retainers, then Artisan crafts the parts and the item.
+- **Gather + craft:** anything monster-only is hunted first, GatherBuddy gathers the rest, then Artisan crafts the parts and the item. What's already in your bags is used.
 - **Gather only:** GatherBuddy gathers everything the recipe needs and stops there, so you can craft it yourself later.
 - **Craft with Artisan:** when the materials are already in your bags.
 
@@ -94,7 +94,7 @@ The Craft section's third tab, **Job quests**, is for crafter and gatherer quest
 
 ### Hunting mob drops
 
-Some materials only drop from monsters. Wherever SellWise lists materials (Craft for profit, Any recipe, Scrips, Job quests), those get a **Hunt** button. Hover it to see which monsters drop the item and where; the drop data comes from [Garland Tools](https://www.garlandtools.org), since the game files don't include drop tables.
+Some materials only drop from monsters, like the Boar Hide and Diremite Web in a Wrapped Crowsbeak Hammer. **Gather + craft**, **Gather only**, **Make** and **Make everything** hunt those first on their own, then carry on with the gathering and crafting; if a hunt can't be done, nothing is started, so GatherBuddy isn't left stuck on a missing hide. You can also hunt one material by itself: wherever SellWise lists materials (Craft for profit, Any recipe, Scrips, Job quests), those get a **Hunt** button. Hover it to see which monsters drop the item and where; the drop data comes from [Garland Tools](https://www.garlandtools.org), since the game files don't include drop tables.
 
 Press it and SellWise:
 - picks the easiest open-world spot you can reach (an aetheryte you're attuned to, monsters no more than 3 levels above your best combat job),

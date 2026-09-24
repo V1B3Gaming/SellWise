@@ -438,11 +438,28 @@ public sealed class CraftView
                              "~40s per node visit and a minute of travel per material, plus waiting for\n" +
                              "timed nodes to spawn; crafting at ~3s per action. Retainer stock counts as already gathered.");
         var tracker = plugin.Tracker;
+
+        // What's already in your bags is used first: a part you hold takes its own materials off the list.
+        var needs = plugin.Crafter.NeedsAfterWhatYouHave(o, crafts);
+        var reused = needs
+            .Where(x => x.Need > 0 && tracker.CountInBags(x.Line.ItemId) > 0)
+            .Select(x => $"{x.Line.Name} x{Math.Min(tracker.CountInBags(x.Line.ItemId), (int)Math.Ceiling(x.Need - 1e-9))}")
+            .Distinct()
+            .ToList();
+        if (reused.Count > 0)
+        {
+            ImGui.TextColored(Theme.Good, Theme.Fit("Using from your bags: " + string.Join(", ", reused), ImGui.GetContentRegionAvail().X));
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("These are already in your bags, so they aren't gathered or crafted again.\n" +
+                                 "Parts you have (like an ingot or lumber) also take their own materials off the list.");
+        }
+
         var i = 0;
-        foreach (var m in o.Materials)
+        foreach (var (m, scaled) in needs)
         {
             i++;
-            var need = (int)Math.Ceiling(m.AmountPerCraft * crafts);
+            var need = (int)Math.Ceiling(scaled - 1e-9);
+            if (need == 0 && m.Depth > 0) continue; // its part is already in your bags
             var bags = tracker.CountInBags(m.ItemId);
             var retainers = tracker.CountOnRetainers(m.ItemId);
             var info = plugin.Catalog.Get(m.ItemId);
@@ -469,7 +486,7 @@ public sealed class CraftView
             var col = ImGui.GetContentRegionAvail().X;
             ImGui.SameLine(tagColumn);
             ImGui.AlignTextToFramePadding();
-            var (src, srcColor) = m.Source switch
+            var (src, srcColor) = need > 0 && bags >= need ? ("In bags", Theme.Good) : m.Source switch
             {
                 MaterialSource.Gather => ("Gather", Theme.Gather),
                 MaterialSource.Craft => ("Craft", Theme.Current.Color),
@@ -493,7 +510,7 @@ public sealed class CraftView
             ImGui.AlignTextToFramePadding();
             ImGui.TextColored(bags >= need ? Theme.Good : bags + retainers >= need ? Theme.Hold : Theme.Text2, $"{bags:N0}/{need:N0}");
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip($"{bags:N0} in your bags, {retainers:N0} on retainers." + (bags < need && bags + retainers >= need ? "\nVulcan can pull these; for Artisan, withdraw them first." : ""));
+                ImGui.SetTooltip($"{bags:N0} in your bags, {retainers:N0} on retainers." + (bags < need && retainers > 0 ? "\nWithdraw them first: GatherBuddy only takes from retainers if its retainer restock is on." : ""));
 
             // Every row must end its line, whether or not it gets a button; otherwise the next
             // material is drawn on top of this one.
@@ -631,8 +648,13 @@ public sealed class CraftView
         ImGui.SameLine();
         using (ImRaii.Disabled(crafter.IsRunning || !o.Unlocked || !CraftCoordinator.VulcanAvailable))
         {
-            if (Theme.PrimaryButton(gatherLabel) && (startError = crafter.Start(o, quantity, CraftBackend.Vulcan, ArtisanFinishes ? plugin.Scanner.VulcanPlan(o) : null)) == null)
-                plugin.MinimizeToJob();
+            if (Theme.PrimaryButton(gatherLabel))
+            {
+                var plan = plugin.Scanner.VulcanPlan(o);
+                var crafts = quantity;
+                startError = plugin.StartJob(o.Item.Name, [(plan, crafts)],
+                    () => crafter.Start(o, crafts, CraftBackend.Vulcan, ArtisanFinishes ? plan : null));
+            }
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(CraftCoordinator.VulcanAvailable

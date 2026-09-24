@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui.Dtr;
@@ -54,6 +55,7 @@ public sealed class Plugin : IDalamudPlugin
     public MobDropService MobDrops { get; }
     public CombatAssist Combat { get; }
     public MobHunter Hunter { get; }
+    public JobRunner Runner { get; }
 
     private readonly WindowSystem windows = new("SellWise");
     private readonly MainWindow mainWindow;
@@ -83,6 +85,7 @@ public sealed class Plugin : IDalamudPlugin
             Hunter = new MobHunter(Travel, Combat);
             Crafter = new CraftCoordinator(Tracker, Repair, Travel);
             Crafter.Busy = () => Hunter.IsBusy ? "Stop the hunt first." : null;
+            Runner = new JobRunner(Crafter, Hunter, MobDrops, Tracker);
             Quality = new QualityService(Config, Market, Tracker, Scanner);
             Estimator = new JobEstimator(this);
             Cordials = new CordialService(Config);
@@ -137,6 +140,17 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     /// <summary>
+    /// Starts a gather-and-craft job: hunts any monster-only materials that aren't in your bags first, then runs
+    /// <paramref name="launch"/> (GatherBuddy and Artisan). Opens the progress window when it's under way.
+    /// </summary>
+    public string? StartJob(string what, IReadOnlyList<(CraftOpportunity Plan, int Crafts)> plans, Func<string?> launch)
+    {
+        var error = Runner.Start(what, plans, launch);
+        if (error == null) MinimizeToJob();
+        return error;
+    }
+
+    /// <summary>
     /// Hunts monsters for a material that only drops from them: picks the easiest spot you can reach and goes.
     /// Returns an error, or null once the hunt has started.
     /// </summary>
@@ -172,6 +186,7 @@ public sealed class Plugin : IDalamudPlugin
             case "stop":
                 Repair.Stop();
                 TurnIn.Stop();
+                Runner.Stop();
                 Hunter.Stop();
                 Crafter.Stop();
                 Navigator.Stop();
@@ -212,6 +227,7 @@ public sealed class Plugin : IDalamudPlugin
         Quality.Update();
         Travel.Update();
         Hunter.Update();
+        Runner.Update();
         Crafter.Update();
         TurnIn.Update();
         ScripTracker.Update();

@@ -398,8 +398,12 @@ public sealed class ScripView
         ImGui.SameLine();
         using (ImRaii.Disabled(blocked || !CraftCoordinator.VulcanAvailable || !CraftCoordinator.ArtisanAvailable))
         {
-            if (Theme.PrimaryButton(gatherLabel) && (startError = crafter.Start(o, quantity, CraftBackend.Vulcan, plugin.Scanner.VulcanPlan(o))) == null)
-                plugin.MinimizeToJob();
+            if (Theme.PrimaryButton(gatherLabel))
+            {
+                var plan = plugin.Scanner.VulcanPlan(o);
+                var crafts = quantity;
+                startError = plugin.StartJob(o.Item.Name, [(plan, crafts)], () => crafter.Start(o, crafts, CraftBackend.Vulcan, plan));
+            }
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(CraftCoordinator.VulcanAvailable && CraftCoordinator.ArtisanAvailable
