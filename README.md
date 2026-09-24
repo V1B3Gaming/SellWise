@@ -127,6 +127,7 @@ dotnet test SellWise.Tests
 - SellWise only **suggests** prices. It never lists, buys or reprices anything on the market board.
 - The gathering and crafting are done by GatherBuddy Reborn and Artisan, so the same rules apply as when you use them on their own: stay at your keyboard.
 - The HQ check assumes normal-quality materials and no lucky conditions, so real crafts should do at least as well.
+- For max quality on every craft, set GatherBuddy's crafter to **Standard Solver** (`/vulcan`, Settings, Solver Mode). On Pure Raphael, GatherBuddy only plans for normal-quality materials, so crafts that use the HQ parts it just made get no quality at all. SellWise reads that setting and warns you before you start.
 - Prices come from what other players have uploaded to Universalis. Rarely-checked items can have stale prices.
 
 ## Credits

@@ -43,6 +43,7 @@ public sealed class Plugin : IDalamudPlugin
     public QualityService Quality { get; }
     public JobEstimator Estimator { get; }
     public CordialService Cordials { get; }
+    public GatherBuddySettings GbrSettings { get; }
 
     private readonly WindowSystem windows = new("SellWise");
     private readonly MainWindow mainWindow;
@@ -68,6 +69,7 @@ public sealed class Plugin : IDalamudPlugin
         Quality = new QualityService(Config, Market, Tracker, Scanner);
         Estimator = new JobEstimator(this);
         Cordials = new CordialService(Config);
+        GbrSettings = new GatherBuddySettings(PluginInterface.ConfigDirectory);
         Theme.SetAccent(Config.Accent);
         Theme.InitFonts(PluginInterface.UiBuilder);
         Crafter.Finished += OnCraftFinished;

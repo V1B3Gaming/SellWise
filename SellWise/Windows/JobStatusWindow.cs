@@ -68,6 +68,12 @@ public sealed class JobStatusWindow : Window
         }
 
         ImGui.Separator();
+        if (job.Backend == CraftBackend.Vulcan && o.SellHq && job.State == CraftJobState.Running && plugin.GbrSettings.QualityProblem is { } problem)
+        {
+            CraftView.DrawQualityProblem(problem);
+            Theme.Muted("Changing it now takes effect from the next craft.");
+            ImGui.Separator();
+        }
         switch (phase)
         {
             case JobPhase.Repairing:

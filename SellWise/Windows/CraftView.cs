@@ -267,12 +267,15 @@ public sealed class CraftView
 
         // Leave room for the action bar (and the buy-first note) at the bottom.
         var toBuy = ToBuy(o);
-        var barHeight = ImGui.GetFrameHeight() + 20 + (toBuy.Count > 0 ? ImGui.GetTextLineHeightWithSpacing() * 2 : 0);
+        var qualityProblem = o.SellHq && CraftCoordinator.VulcanAvailable ? plugin.GbrSettings.QualityProblem : null;
+        var barHeight = ImGui.GetFrameHeight() + 20
+                        + (toBuy.Count > 0 ? ImGui.GetTextLineHeightWithSpacing() * 2 : 0)
+                        + (qualityProblem != null ? ImGui.GetFrameHeightWithSpacing() : 0);
         using (var mats = ImRaii.Child("##mats", new Vector2(0, ImGui.GetContentRegionAvail().Y - barHeight)))
         {
             if (mats) DrawMaterials(o);
         }
-        DrawActionBar(o, toBuy);
+        DrawActionBar(o, toBuy, qualityProblem);
     }
 
     /// <summary>How to get the materials: your choice, not SellWise's.</summary>
@@ -535,9 +538,23 @@ public sealed class CraftView
         }
     }
 
-    private void DrawActionBar(CraftOpportunity o, List<(MaterialLine Line, int Missing)> toBuy)
+    /// <summary>A warning, with a shortcut to GatherBuddy, when its crafter won't max quality.</summary>
+    public static void DrawQualityProblem(string problem)
+    {
+        const string button = "Open GatherBuddy";
+        var buttonWidth = ImGui.CalcTextSize(button).X + ImGui.GetStyle().FramePadding.X * 2;
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextColored(Theme.Bad, Theme.Fit("GatherBuddy won't max quality with its current solver (hover for why)", ImGui.GetContentRegionAvail().X - buttonWidth - 10));
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(problem + "\n\n" + GatherBuddySettings.Fix);
+        ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - buttonWidth);
+        if (ImGui.Button(button)) Plugin.CommandManager.ProcessCommand("/vulcan");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(GatherBuddySettings.Fix);
+    }
+
+    private void DrawActionBar(CraftOpportunity o, List<(MaterialLine Line, int Missing)> toBuy, string? qualityProblem)
     {
         var crafter = plugin.Crafter;
+        if (qualityProblem != null) DrawQualityProblem(qualityProblem);
         if (toBuy.Count > 0)
         {
             var list = string.Join(", ", toBuy.Select(b => $"{b.Line.Name} x{b.Missing}"));
@@ -586,7 +603,7 @@ public sealed class CraftView
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(CraftCoordinator.VulcanAvailable
-                ? "GatherBuddy Reborn (Vulcan) gathers missing materials, pulls from retainers, then crafts."
+                ? "GatherBuddy Reborn (Vulcan) gathers missing materials, pulls from retainers, then crafts." + (qualityProblem != null ? "\n\n" + qualityProblem : "")
                 : "Install and enable GatherBuddy Reborn to use this.");
 
         if (startError != null) ImGui.TextColored(Theme.Bad, startError);
