@@ -225,6 +225,8 @@ public sealed class ConfigWindow : Window
         changed |= Check("Target the bell after walking to it", c.TargetBellOnArrival, v => c.TargetBellOnArrival = v);
         changed |= Check("Open the crafting status window when a job starts", c.ShowJobWindow, v => c.ShowJobWindow = v);
         changed |= Check("Use cordials while a craft job is gathering", c.UseCordials, v => c.UseCordials = v);
+        changed |= Check("Let Artisan do the crafting after GatherBuddy gathers", c.FinishWithArtisan, v => c.FinishWithArtisan = v);
+        Help("For max quality every craft. Once GatherBuddy has gathered everything, SellWise stops it (never mid-craft) and hands the parts and the item to Artisan. Needs Artisan installed.");
         Help("Drinks the biggest cordial that won't waste GP whenever the cordial cooldown is ready, between nodes. GatherBuddy Reborn can do this too (auto-gather preset > Consumables); they share one cooldown, so both on is safe.");
 
         ImGui.Spacing();

@@ -60,6 +60,8 @@ public enum MaterialMode
 
 public sealed class CraftSettings
 {
+    public CraftSettings Clone() => (CraftSettings)MemberwiseClone();
+
     /// <summary>How materials are obtained for costing, ranking and time estimates. The player picks this.</summary>
     public MaterialMode MaterialMode { get; set; } = MaterialMode.GatherAndCraft;
 

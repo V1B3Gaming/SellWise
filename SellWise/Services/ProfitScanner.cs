@@ -151,6 +151,20 @@ public sealed class ProfitScanner : IDisposable
         return priced;
     }
 
+    /// <summary>
+    /// The recipe costed the way GatherBuddy works it (gather what's gatherable, craft every part), which is what
+    /// Artisan has to finish from after GatherBuddy has done the gathering.
+    /// </summary>
+    public CraftOpportunity VulcanPlan(CraftOpportunity o)
+    {
+        if (Db is not { } db) return o;
+        var cs = config.Craft.Clone();
+        cs.MaterialMode = MaterialMode.GatherAndCraft;
+        if (Calculator(db, cs, config.Advisor, null).Evaluate(o.Recipe) is not { } plan) return o;
+        plan.LockedReason = o.LockedReason;
+        return plan;
+    }
+
     /// <summary>Every way to get a material, with what each costs per unit.</summary>
     public IReadOnlyList<ProfitCalculator.Choice> Choices(uint itemId)
         => Db is { } db ? Calculator(db, config.Craft, config.Advisor, null).Choices(itemId) : [];

@@ -267,7 +267,7 @@ public sealed class CraftView
 
         // Leave room for the action bar (and the buy-first note) at the bottom.
         var toBuy = ToBuy(o);
-        var qualityProblem = o.SellHq && CraftCoordinator.VulcanAvailable ? plugin.GbrSettings.QualityProblem : null;
+        var qualityProblem = o.SellHq && CraftCoordinator.VulcanAvailable && !ArtisanFinishes ? plugin.GbrSettings.QualityProblem : null;
         var barHeight = ImGui.GetFrameHeight() + 20
                         + (toBuy.Count > 0 ? ImGui.GetTextLineHeightWithSpacing() * 2 : 0)
                         + (qualityProblem != null ? ImGui.GetFrameHeightWithSpacing() : 0);
@@ -538,6 +538,9 @@ public sealed class CraftView
         }
     }
 
+    /// <summary>GatherBuddy jobs hand the crafting to Artisan once the gathering's done.</summary>
+    private bool ArtisanFinishes => Config.FinishWithArtisan && CraftCoordinator.ArtisanAvailable;
+
     /// <summary>A warning, with a shortcut to GatherBuddy, when its crafter won't max quality.</summary>
     public static void DrawQualityProblem(string problem)
     {
@@ -599,11 +602,14 @@ public sealed class CraftView
         ImGui.SameLine();
         using (ImRaii.Disabled(crafter.IsRunning || !o.Unlocked || !CraftCoordinator.VulcanAvailable))
         {
-            if (Theme.PrimaryButton(gatherLabel) && (startError = crafter.Start(o, quantity, CraftBackend.Vulcan)) == null) plugin.MinimizeToJob();
+            if (Theme.PrimaryButton(gatherLabel) && (startError = crafter.Start(o, quantity, CraftBackend.Vulcan, ArtisanFinishes ? plugin.Scanner.VulcanPlan(o) : null)) == null)
+                plugin.MinimizeToJob();
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(CraftCoordinator.VulcanAvailable
-                ? "GatherBuddy Reborn (Vulcan) gathers missing materials, pulls from retainers, then crafts." + (qualityProblem != null ? "\n\n" + qualityProblem : "")
+                ? (ArtisanFinishes
+                      ? "GatherBuddy Reborn gathers missing materials and pulls from retainers, then Artisan crafts the parts\nand the item, going for max quality."
+                      : "GatherBuddy Reborn (Vulcan) gathers missing materials, pulls from retainers, then crafts.") + (qualityProblem != null ? "\n\n" + qualityProblem : "")
                 : "Install and enable GatherBuddy Reborn to use this.");
 
         if (startError != null) ImGui.TextColored(Theme.Bad, startError);

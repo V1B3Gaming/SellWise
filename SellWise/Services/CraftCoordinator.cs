@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Plugin.Ipc;
+using ECommons;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using SellWise.Core;
 
 namespace SellWise.Services;
@@ -25,9 +27,17 @@ public enum CraftJobState
 
 public sealed class CraftJob
 {
-    public required CraftOpportunity Opportunity { get; init; }
+    public required CraftOpportunity Opportunity { get; set; }
     public required int Crafts { get; init; }
-    public required CraftBackend Backend { get; init; }
+    public required CraftBackend Backend { get; set; }
+
+    /// <summary>
+    /// A GatherBuddy job that switches to Artisan once the gathering is done, costed the way GatherBuddy gathers it.
+    /// Null for a plain GatherBuddy or Artisan job.
+    /// </summary>
+    public CraftOpportunity? ArtisanPlan { get; set; }
+    public bool HandedOff { get; set; }
+    public DateTime? ArtisanStartAtUtc { get; set; }
     public int StartCount { get; init; }
     public int TargetCount { get; init; }
     public int CurrentCount { get; set; }
@@ -36,7 +46,7 @@ public sealed class CraftJob
     public string Status { get; set; } = "";
 
     /// <summary>Artisan runs one recipe at a time: intermediates first, then the final item.</summary>
-    public List<(uint RecipeId, int Crafts, string Name)> Steps { get; init; } = [];
+    public List<(uint RecipeId, int Crafts, string Name)> Steps { get; set; } = [];
     public int StepIndex { get; set; }
     public bool StepSeenBusy { get; set; }
     public DateTime StepStartedUtc { get; set; }
@@ -52,6 +62,10 @@ public sealed class CraftJob
 public sealed class CraftCoordinator
 {
     private static readonly TimeSpan ArtisanStartTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan HandoffSettle = TimeSpan.FromSeconds(3);
+
+    // GatherBuddy has no IPC to stop its crafting queue; this command calls the same stop as its status window.
+    private const string VulcanStopCommand = "/gatherdebug repairstop";
 
     private readonly InventoryTracker tracker;
     private readonly RepairService repair;
@@ -60,7 +74,9 @@ public sealed class CraftCoordinator
     private readonly ICallGateSubscriber<bool, object> artisanStop;
     private readonly ICallGateSubscriber<bool, object> gbrSetAutoGather;
     private readonly ICallGateSubscriber<string> gbrStatus;
+    private readonly ICallGateSubscriber<bool> gbrAutoGatherEnabled;
     private DateTime nextPoll = DateTime.MinValue;
+    private DateTime nextHandoffCheck = DateTime.MinValue;
 
     public CraftJob? Job { get; private set; }
 
@@ -77,6 +93,7 @@ public sealed class CraftCoordinator
         artisanStop = pi.GetIpcSubscriber<bool, object>("Artisan.SetStopRequest");
         gbrSetAutoGather = pi.GetIpcSubscriber<bool, object>("GatherBuddyReborn.SetAutoGatherEnabled");
         gbrStatus = pi.GetIpcSubscriber<string>("GatherBuddyReborn.GetAutoGatherStatusText");
+        gbrAutoGatherEnabled = pi.GetIpcSubscriber<bool>("GatherBuddyReborn.IsAutoGatherEnabled");
     }
 
     public static bool VulcanAvailable => IsLoaded("GatherBuddyReborn");
@@ -100,12 +117,23 @@ public sealed class CraftCoordinator
         return missing;
     }
 
-    /// <summary>Must be called on the framework thread.</summary>
-    public string? Start(CraftOpportunity opp, int crafts, CraftBackend backend)
+    /// <summary>
+    /// Must be called on the framework thread. With <paramref name="artisanPlan"/>, a GatherBuddy job hands the crafting
+    /// to Artisan once gathering is done (or goes straight to Artisan if everything's already in your bags).
+    /// </summary>
+    public string? Start(CraftOpportunity opp, int crafts, CraftBackend backend, CraftOpportunity? artisanPlan = null)
     {
         if (IsRunning) return "A craft job is already running.";
         if (crafts <= 0) return "Pick a quantity.";
         if (opp.LockedReason is { } locked) return $"You can't craft this yet: {locked}.";
+
+        if (backend == CraftBackend.Vulcan && artisanPlan != null && ArtisanAvailable && MissingForArtisan(artisanPlan, crafts).Count == 0)
+        {
+            // Nothing to gather: skip GatherBuddy entirely.
+            backend = CraftBackend.Artisan;
+            opp = artisanPlan;
+            artisanPlan = null;
+        }
 
         var itemId = opp.Item.Id;
         var start = CountResult(itemId);
@@ -118,6 +146,7 @@ public sealed class CraftCoordinator
             CurrentCount = start,
             TargetCount = start + crafts * Math.Max(1, opp.Recipe.Yield),
             Steps = backend == CraftBackend.Artisan ? ArtisanSteps(opp, crafts) : [],
+            ArtisanPlan = backend == CraftBackend.Vulcan && ArtisanAvailable ? artisanPlan : null,
         };
 
         if (backend == CraftBackend.Vulcan && !VulcanAvailable) return "GatherBuddy Reborn isn't loaded.";
@@ -168,10 +197,15 @@ public sealed class CraftCoordinator
     {
         if (Job is not { State: CraftJobState.Running } job) return;
         repair.Stop();
+        var stoppedVulcan = false;
         try
         {
             if (job.Backend == CraftBackend.Artisan) artisanStop.InvokeAction(true);
-            else gbrSetAutoGather.InvokeAction(false);
+            else
+            {
+                gbrSetAutoGather.InvokeAction(false);
+                stoppedVulcan = Plugin.CommandManager.ProcessCommand(VulcanStopCommand);
+            }
         }
         catch (Exception e)
         {
@@ -179,9 +213,9 @@ public sealed class CraftCoordinator
         }
 
         job.State = CraftJobState.Stopped;
-        job.Status = job.Backend == CraftBackend.Vulcan
-            ? "Asked GatherBuddy to stop gathering. If Vulcan is mid-craft, stop it from its window."
-            : "Asked Artisan to stop.";
+        job.Status = job.Backend == CraftBackend.Artisan ? "Asked Artisan to stop."
+            : stoppedVulcan ? "Stopped GatherBuddy."
+            : "Asked GatherBuddy to stop gathering. If Vulcan is mid-craft, stop it from its window.";
     }
 
     public void MarkFinished()
@@ -202,6 +236,21 @@ public sealed class CraftCoordinator
     {
         if (Job is not { State: CraftJobState.Running } job) return;
         var now = DateTime.UtcNow;
+
+        // Checked more often than the rest: GatherBuddy starts crafting a few seconds after its gathering ends.
+        if (job is { Backend: CraftBackend.Vulcan, ArtisanPlan: not null, HandedOff: false, WaitingForRepair: false } && now >= nextHandoffCheck)
+        {
+            nextHandoffCheck = now.AddMilliseconds(250);
+            TryHandOff(job, now);
+        }
+        if (job.ArtisanStartAtUtc is { } startAt)
+        {
+            if (now < startAt) return;
+            job.ArtisanStartAtUtc = null;
+            StartArtisanStep(job);
+            return;
+        }
+
         if (now < nextPoll) return;
         nextPoll = now.AddSeconds(1);
 
@@ -258,6 +307,55 @@ public sealed class CraftCoordinator
 
         UpdateArtisan(job, now);
     }
+
+    /// <summary>
+    /// Once GatherBuddy has finished gathering and everything Artisan needs is in your bags, stop GatherBuddy
+    /// (between crafts, never during one) and give the crafting to Artisan.
+    /// </summary>
+    private void TryHandOff(CraftJob job, DateTime now)
+    {
+        var plan = job.ArtisanPlan!;
+        try
+        {
+            if (gbrAutoGatherEnabled.InvokeFunc()) return; // still gathering
+        }
+        catch
+        {
+            return;
+        }
+
+        var yield = Math.Max(1, plan.Recipe.Yield);
+        var remaining = Math.Max(1, job.Crafts - job.Made / yield);
+        var missing = MissingForArtisan(plan, remaining);
+        var midCraft = SynthesisOpen();
+        if (missing.Count > 0)
+        {
+            if (midCraft)
+                job.Status = "GatherBuddy is crafting. SellWise couldn't hand this to Artisan: " +
+                             string.Join(", ", missing.Take(3).Select(m => $"{m.Line.Name} x{m.Missing}")) + " isn't in your bags.";
+            return;
+        }
+        if (midCraft) return; // let the current craft finish; take over before the next one
+
+        if (!Plugin.CommandManager.ProcessCommand(VulcanStopCommand))
+        {
+            job.ArtisanPlan = null;
+            job.Status = "Couldn't stop GatherBuddy to hand over to Artisan (its stop command is missing), so GatherBuddy will craft.";
+            return;
+        }
+
+        job.HandedOff = true;
+        job.Backend = CraftBackend.Artisan;
+        job.Opportunity = plan;
+        job.Steps = ArtisanSteps(plan, remaining);
+        job.StepIndex = 0;
+        job.ArtisanStartAtUtc = now + HandoffSettle; // give GatherBuddy a moment to close its windows
+        job.Status = "Gathering done. Handing the crafting to Artisan for max quality...";
+        Plugin.Log.Information($"[SellWise] Handed {plan.Item.Name} x{remaining} from GatherBuddy to Artisan ({job.Steps.Count} steps)");
+    }
+
+    private static unsafe bool SynthesisOpen()
+        => GenericHelpers.TryGetAddonByName<AtkUnitBase>("Synthesis", out var addon) && addon->IsVisible;
 
     private void UpdateArtisan(CraftJob job, DateTime now)
     {

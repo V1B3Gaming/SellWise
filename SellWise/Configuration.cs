@@ -38,6 +38,12 @@ public sealed class Configuration : IPluginConfiguration
     /// <summary>Drink cordials between gathering nodes while a craft job is gathering.</summary>
     public bool UseCordials { get; set; } = false;
 
+    /// <summary>
+    /// GatherBuddy gathers, then SellWise stops it and has Artisan do the crafting, so quality is always pushed to the
+    /// max (GatherBuddy's own solver can skip quality). Only when Artisan is installed.
+    /// </summary>
+    public bool FinishWithArtisan { get; set; } = true;
+
     public HashSet<uint> IgnoredItems { get; set; } = [];
 
     public CraftSettings Craft { get; set; } = new();

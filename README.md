@@ -67,7 +67,7 @@ Hit **Scan** and SellWise prices every recipe that sells on your world. It takes
 
 ![Craft pipeline](docs/images/craft-running.png)
 
-**Gather + craft** hands the job to GatherBuddy Reborn, which goes and gathers whatever's missing, grabs anything sitting on your retainers, and crafts it. If you've already got the materials, **Craft with Artisan** skips straight to crafting. If you planned to buy something, SellWise lists what to pick up first. It never buys for you, so anything that isn't in your bags when the job starts, GatherBuddy gathers or crafts instead.
+**Gather + craft** hands the job to GatherBuddy Reborn, which goes and gathers whatever's missing and grabs anything sitting on your retainers. If you have Artisan too, SellWise takes the crafting from there: once GatherBuddy has everything, SellWise stops it (never in the middle of a craft) and has Artisan make the parts and the item, pushing quality as high as it'll go. Without Artisan, GatherBuddy does the crafting itself. If you've already got the materials, **Craft with Artisan** skips straight to crafting. If you planned to buy something, SellWise lists what to pick up first. It never buys for you, so anything that isn't in your bags when the job starts, GatherBuddy gathers or crafts instead.
 
 When it's done, SellWise pulls a fresh price so you know what to list at.
 
@@ -127,7 +127,8 @@ dotnet test SellWise.Tests
 - SellWise only **suggests** prices. It never lists, buys or reprices anything on the market board.
 - The gathering and crafting are done by GatherBuddy Reborn and Artisan, so the same rules apply as when you use them on their own: stay at your keyboard.
 - The HQ check assumes normal-quality materials and no lucky conditions, so real crafts should do at least as well.
-- For max quality on every craft, set GatherBuddy's crafter to **Standard Solver** (`/vulcan`, Settings, Solver Mode). On Pure Raphael, GatherBuddy only plans for normal-quality materials, so crafts that use the HQ parts it just made get no quality at all. SellWise reads that setting and warns you before you start.
+- Letting Artisan do the crafting is on by default (Settings, "Let Artisan do the crafting after GatherBuddy gathers"). GatherBuddy has no plugin interface for stopping its queue, so SellWise uses its `/gatherdebug repairstop` command, which calls the same stop as its own Stop button; you'll see a debug line in chat when it does.
+- If you turn that off, set GatherBuddy's crafter to **Standard Solver** for max quality (`/vulcan`, Settings, Solver Mode). On Pure Raphael, GatherBuddy only plans for normal-quality materials, so crafts that use the HQ parts it just made get no quality at all. SellWise reads that setting and warns you before you start.
 - Prices come from what other players have uploaded to Universalis. Rarely-checked items can have stale prices.
 
 ## Credits
