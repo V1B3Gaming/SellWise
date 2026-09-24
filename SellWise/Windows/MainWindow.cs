@@ -447,7 +447,7 @@ public sealed class MainWindow : Window
         ImGui.SameLine(0, 10);
         Theme.Tile("Sold per day", r.Market?.HasData == true ? r.UnitsPerDay.ToString("0.#") : "-", w);
         ImGui.SameLine(0, 10);
-        Theme.Tile("Data center cheapest", dcMin is { } m ? $"{m:N0}  {dcWorld}" : "-", w);
+        Theme.Tile("Cheapest on DC", dcMin is { } m ? $"{m:N0}  {dcWorld}" : "-", w);
     }
 
     private static void DrawSalesChart(Recommendation r)
