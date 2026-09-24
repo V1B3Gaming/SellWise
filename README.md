@@ -90,6 +90,7 @@ The Craft section's third tab, **Job quests**, is for crafter and gatherer quest
 - **Where you stand:** every quest shows whether it's in your journal, ready to pick up, locked (and why: the level you need or the quest to finish first) or done. By default it lists the ones you can do now.
 - **What to hand in:** each item, how many, and whether it has to be high quality, with how many you already have. The game data says which items a quest takes but not how many, so SellWise reads the count from the quest's journal text; where the text doesn't say, it shows "?" and you set the number. Special materials the quest hands you are marked as such.
 - **Making it:** **Make** crafts one item, **Make all** does everything the quest still needs, and **Make everything** at the top does it for every quest you can do now, one job after another (GatherBuddy gathers, Artisan crafts). Items you only gather have a **Gather** button that sends you to the node with GatherBuddy.
+- **Crafting at the quest giver:** once the gathering's done, SellWise takes you to the quest giver before Artisan crafts, so you can hand the items straight in. It teleports to the zone's aetheryte, or for givers off the main aetheryte (Old Gridania, the Steps of Thal, the Upper Decks, the Pillars) teleports to the city and takes the aethernet with [Lifestream](https://github.com/NightmareXIV/Lifestream), then walks the rest with vnavmesh. Turn it off with "Craft next to the quest giver" on the quest.
 
 ## Scrips
 
@@ -145,8 +146,9 @@ SellWise doesn't buy anything at the scrip exchange. You do the buying; it keeps
 - [ECommons](https://github.com/NightmareXIV/ECommons), which handles clicking through the repair and confirmation windows. It's installed with SellWise; you don't need to do anything.
 
 **Nice to have** (SellWise works without these; the buttons that need them just stay greyed out)
-- [vnavmesh](https://github.com/awgil/ffxiv_navmesh): walking to summoning bells and menders
+- [vnavmesh](https://github.com/awgil/ffxiv_navmesh): walking to summoning bells, menders, collectable appraisers and quest givers
 - [GatherBuddy Reborn](https://github.com/FFXIV-CombatReborn/GatherBuddyReborn): Gather + craft, the per-material Gather buttons, and potions/food while gathering (turned on in its own settings)
+- [Lifestream](https://github.com/NightmareXIV/Lifestream): the aethernet hop to job quest givers in Old Gridania, the Steps of Thal, the Upper Decks and the Pillars
 - [Artisan](https://github.com/PunishXIV/Artisan): Craft with Artisan
 
 **Building it yourself**

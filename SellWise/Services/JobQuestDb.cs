@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using Lumina.Excel;
 using Lumina.Excel.Sheets;
@@ -13,8 +14,12 @@ namespace SellWise.Services;
 /// <param name="FromQuest">Handed to you during the quest (special materials), so there's nothing to make.</param>
 public sealed record QuestItem(uint ItemId, string Name, int? Count, bool Hq, bool FromQuest);
 
+/// <summary>Where to go to hand a quest in: the quest giver.</summary>
+public sealed record TravelTarget(uint TerritoryId, Vector3 Position, uint NpcId, string Name);
+
 /// <param name="JobIndex">0-7 crafters (same as recipes), 8 MIN, 9 BTN, 10 FSH.</param>
-public sealed record JobQuest(uint QuestId, string Name, int JobIndex, int Level, string Place, IReadOnlyList<uint> PreviousQuests, bool NeedsAllPrevious, IReadOnlyList<QuestItem> Items);
+public sealed record JobQuest(uint QuestId, string Name, int JobIndex, int Level, string Place, IReadOnlyList<uint> PreviousQuests, bool NeedsAllPrevious,
+    IReadOnlyList<QuestItem> Items, TravelTarget? Giver);
 
 public enum QuestStatus
 {
@@ -81,8 +86,15 @@ public sealed class JobQuestDb
             var previous = q.PreviousQuest.Select(p => p.RowId).Where(id => id != 0).ToList();
             var questName = q.Name.ExtractText();
             names[q.RowId] = questName;
+            TravelTarget? giver = null;
+            if (q.IssuerLocation.ValueNullable is { } at && at.Territory.RowId != 0)
+            {
+                var npcId = q.IssuerStart.RowId;
+                var npcName = data.GetExcelSheet<ENpcResident>().GetRowOrDefault(npcId)?.Singular.ExtractText() ?? "the quest giver";
+                giver = new TravelTarget(at.Territory.RowId, new Vector3(at.X, at.Y, at.Z), npcId, npcName);
+            }
             quests.Add(new JobQuest(q.RowId, questName, job, q.ClassJobLevel[0], q.PlaceName.ValueNullable?.Name.ExtractText() ?? "",
-                previous, q.PreviousQuestJoin != 2, questItems));
+                previous, q.PreviousQuestJoin != 2, questItems, giver));
         }
 
         // Previous quests are often outside this set (the class unlock quest), so remember every quest's name.

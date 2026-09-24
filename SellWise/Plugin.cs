@@ -49,6 +49,7 @@ public sealed class Plugin : IDalamudPlugin
     public ScripTracker ScripTracker { get; }
     public TurnInService TurnIn { get; }
     public JobQuestService JobQuests { get; }
+    public QuestTravel Travel { get; }
 
     private readonly WindowSystem windows = new("SellWise");
     private readonly MainWindow mainWindow;
@@ -70,7 +71,8 @@ public sealed class Plugin : IDalamudPlugin
         Scanner = new ProfitScanner(Config, Market, Catalog);
         Teleporter = new CityTeleporter();
         Repair = new RepairService(Config, Teleporter);
-        Crafter = new CraftCoordinator(Tracker, Repair);
+        Travel = new QuestTravel();
+        Crafter = new CraftCoordinator(Tracker, Repair, Travel);
         Quality = new QualityService(Config, Market, Tracker, Scanner);
         Estimator = new JobEstimator(this);
         Cordials = new CordialService(Config);
@@ -173,6 +175,7 @@ public sealed class Plugin : IDalamudPlugin
         Navigator.Update(Config.TargetBellOnArrival);
         Repair.Update();
         Quality.Update();
+        Travel.Update();
         Crafter.Update();
         TurnIn.Update();
         ScripTracker.Update();

@@ -47,6 +47,9 @@ public sealed class Configuration : IPluginConfiguration
     /// <summary>After a scrip craft job, take the collectables to an appraiser and turn them in.</summary>
     public bool TurnInAfterScripJob { get; set; } = true;
 
+    /// <summary>For job quest items: go to the quest giver before crafting, so they can be handed straight in.</summary>
+    public bool CraftAtQuestGiver { get; set; } = true;
+
     /// <summary>Scrip exchange items you're saving for, per character (content ID → item ID → how many).</summary>
     public Dictionary<ulong, Dictionary<uint, int>> ScripGoals { get; set; } = [];
 

@@ -226,6 +226,17 @@ public sealed class JobQuestView
         if (status != QuestStatus.Done && jobs.Count > 0)
         {
             ImGui.Spacing();
+            var atGiver = Config.CraftAtQuestGiver;
+            if (ImGui.Checkbox(q.Giver != null ? $"Craft next to {q.Giver.Name}" : "Craft next to the quest giver", ref atGiver))
+            {
+                Config.CraftAtQuestGiver = atGiver;
+                Config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Once the gathering's done, SellWise heads to the quest giver (teleport, the aethernet with Lifestream,\n" +
+                                 "then walking with vnavmesh) and Artisan crafts there, so you can hand the items straight in." +
+                                 (QuestTravel.LifestreamAvailable ? "" : "\nInstall Lifestream for quest givers that are off the aethernet (Old Gridania, the Steps of Thal...)."));
+            ImGui.Spacing();
             using (ImRaii.Disabled(plugin.Crafter.IsRunning))
             {
                 if (Theme.PrimaryButton(jobs.Count == 1 ? "Make it" : $"Make all {jobs.Count}")) Start(jobs);
@@ -277,7 +288,7 @@ public sealed class JobQuestView
                 var crafts = CraftsFor(craft, missing);
                 using (ImRaii.Disabled(missing == 0 || plugin.Crafter.IsRunning || craft.LockedReason != null))
                 {
-                    if (ImGui.Button($"Make {crafts}##make{index}")) Start([Job(craft, crafts)]);
+                    if (ImGui.Button($"Make {crafts}##make{index}")) Start([Job(q, craft, crafts)]);
                 }
                 if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
                     ImGui.SetTooltip($"{craft.Recipe.Job} {craft.Recipe.Level} recipe · materials about {craft.MaterialValue * crafts:N0} gil at market value." +
@@ -308,30 +319,31 @@ public sealed class JobQuestView
     private static int CraftsFor(CraftOpportunity craft, int missing) => missing <= 0 ? 0 : (int)Math.Ceiling(missing / (double)Math.Max(1, craft.Recipe.Yield));
 
     /// <summary>Craft jobs for everything craftable this quest is still missing.</summary>
-    private List<(CraftOpportunity Opp, int Crafts, CraftBackend Backend, CraftOpportunity? Plan)> CraftJobs(JobQuest q)
+    private List<QueuedJob> CraftJobs(JobQuest q)
     {
-        var jobs = new List<(CraftOpportunity, int, CraftBackend, CraftOpportunity?)>();
+        var jobs = new List<QueuedJob>();
         if (plugin.JobQuests.Status(q).Status == QuestStatus.Done) return jobs;
         foreach (var p in plugin.JobQuests.Plan(q, World))
         {
             if (p.Item.FromQuest || p.Craft is not { } craft || craft.LockedReason != null) continue;
             var crafts = CraftsFor(craft, Math.Max(0, Need(q, p) - p.Have));
-            if (crafts > 0) jobs.Add(Job(craft, crafts));
+            if (crafts > 0) jobs.Add(Job(q, craft, crafts));
         }
         return jobs;
     }
 
-    private (CraftOpportunity, int, CraftBackend, CraftOpportunity?) Job(CraftOpportunity craft, int crafts)
+    private QueuedJob Job(JobQuest q, CraftOpportunity craft, int crafts)
     {
         var o = craftView.Priced(craft);
+        var destination = Config.CraftAtQuestGiver ? q.Giver : null;
         if (CraftCoordinator.VulcanAvailable)
-            return (o, crafts, CraftBackend.Vulcan, Config.FinishWithArtisan && CraftCoordinator.ArtisanAvailable ? plugin.Scanner.VulcanPlan(o) : null);
-        return (o, crafts, CraftBackend.Artisan, null);
+            return new QueuedJob(o, crafts, CraftBackend.Vulcan, Config.FinishWithArtisan && CraftCoordinator.ArtisanAvailable ? plugin.Scanner.VulcanPlan(o) : null, destination);
+        return new QueuedJob(o, crafts, CraftBackend.Artisan, null, destination);
     }
 
     private Configuration Config => plugin.Config;
 
-    private void Start(List<(CraftOpportunity Opp, int Crafts, CraftBackend Backend, CraftOpportunity? Plan)> jobs)
+    private void Start(List<QueuedJob> jobs)
     {
         startError = plugin.Crafter.StartAll(jobs);
         if (startError == null) plugin.MinimizeToJob();

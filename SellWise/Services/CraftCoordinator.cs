@@ -40,6 +40,11 @@ public sealed class CraftJob
 
     /// <summary>Stop once GatherBuddy has gathered everything; don't craft.</summary>
     public bool GatherOnly { get; set; }
+
+    /// <summary>Walk here (the quest giver) before Artisan starts, so the items can be handed straight in.</summary>
+    public TravelTarget? Destination { get; init; }
+    public bool WaitingForTravel { get; set; }
+    public bool Traveled { get; set; }
     public DateTime? ArtisanStartAtUtc { get; set; }
     public int StartCount { get; init; }
     public int TargetCount { get; init; }
@@ -61,6 +66,9 @@ public sealed class CraftJob
     public int Wanted => TargetCount - StartCount;
 }
 
+/// <summary>A craft job waiting in the queue.</summary>
+public sealed record QueuedJob(CraftOpportunity Opp, int Crafts, CraftBackend Backend, CraftOpportunity? Plan = null, TravelTarget? Destination = null);
+
 /// <summary>Hands a craft off to Vulcan or Artisan and watches your inventory until the items arrive.</summary>
 public sealed class CraftCoordinator
 {
@@ -72,6 +80,7 @@ public sealed class CraftCoordinator
 
     private readonly InventoryTracker tracker;
     private readonly RepairService repair;
+    private readonly QuestTravel travel;
     private readonly ICallGateSubscriber<ushort, int, object> artisanCraft;
     private readonly ICallGateSubscriber<bool> artisanBusy;
     private readonly ICallGateSubscriber<bool, object> artisanStop;
@@ -80,7 +89,7 @@ public sealed class CraftCoordinator
     private readonly ICallGateSubscriber<bool> gbrAutoGatherEnabled;
     private DateTime nextPoll = DateTime.MinValue;
     private DateTime nextHandoffCheck = DateTime.MinValue;
-    private readonly Queue<(CraftOpportunity Opp, int Crafts, CraftBackend Backend, CraftOpportunity? Plan)> queue = new();
+    private readonly Queue<QueuedJob> queue = new();
     private DateTime nextQueued;
 
     public CraftJob? Job { get; private set; }
@@ -88,10 +97,11 @@ public sealed class CraftCoordinator
     /// <summary>Fired once when a job's items have all been made.</summary>
     public event Action<CraftJob>? Finished;
 
-    public CraftCoordinator(InventoryTracker tracker, RepairService repair)
+    public CraftCoordinator(InventoryTracker tracker, RepairService repair, QuestTravel travel)
     {
         this.tracker = tracker;
         this.repair = repair;
+        this.travel = travel;
         var pi = Plugin.PluginInterface;
         artisanCraft = pi.GetIpcSubscriber<ushort, int, object>("Artisan.CraftItem");
         artisanBusy = pi.GetIpcSubscriber<bool>("Artisan.IsBusy");
@@ -133,11 +143,11 @@ public sealed class CraftCoordinator
     /// Runs several jobs one after another (each starts a few seconds after the last finishes). Stops the chain if
     /// one fails or you press Stop. Must be called on the framework thread.
     /// </summary>
-    public string? StartAll(IReadOnlyList<(CraftOpportunity Opp, int Crafts, CraftBackend Backend, CraftOpportunity? Plan)> jobs)
+    public string? StartAll(IReadOnlyList<QueuedJob> jobs)
     {
         if (IsRunning) return "A craft job is already running.";
         if (jobs.Count == 0) return "Nothing to make.";
-        var error = Start(jobs[0].Opp, jobs[0].Crafts, jobs[0].Backend, jobs[0].Plan);
+        var error = Start(jobs[0].Opp, jobs[0].Crafts, jobs[0].Backend, jobs[0].Plan, jobs[0].Destination);
         if (error != null) return error;
         queue.Clear();
         foreach (var job in jobs.Skip(1)) queue.Enqueue(job);
@@ -161,7 +171,7 @@ public sealed class CraftCoordinator
     /// Must be called on the framework thread. With <paramref name="artisanPlan"/>, a GatherBuddy job hands the crafting
     /// to Artisan once gathering is done (or goes straight to Artisan if everything's already in your bags).
     /// </summary>
-    public string? Start(CraftOpportunity opp, int crafts, CraftBackend backend, CraftOpportunity? artisanPlan = null)
+    public string? Start(CraftOpportunity opp, int crafts, CraftBackend backend, CraftOpportunity? artisanPlan = null, TravelTarget? destination = null)
     {
         if (IsRunning) return "A craft job is already running.";
         if (crafts <= 0) return "Pick a quantity.";
@@ -187,6 +197,7 @@ public sealed class CraftCoordinator
             TargetCount = start + crafts * Math.Max(1, opp.Recipe.Yield),
             Steps = backend == CraftBackend.Artisan ? ArtisanSteps(opp, crafts) : [],
             ArtisanPlan = backend == CraftBackend.Vulcan && ArtisanAvailable ? artisanPlan : null,
+            Destination = destination,
         };
 
         if (backend == CraftBackend.Vulcan && !VulcanAvailable) return "GatherBuddy Reborn isn't loaded.";
@@ -220,7 +231,7 @@ public sealed class CraftCoordinator
                     break;
 
                 case CraftBackend.Artisan:
-                    StartArtisanStep(job);
+                    BeginArtisan(job);
                     break;
             }
         }
@@ -237,6 +248,7 @@ public sealed class CraftCoordinator
     {
         if (Job is not { State: CraftJobState.Running } job) return;
         repair.Stop();
+        travel.Stop();
         var stoppedVulcan = false;
         try
         {
@@ -279,12 +291,12 @@ public sealed class CraftCoordinator
         var now = DateTime.UtcNow;
         if (Job is null or { State: CraftJobState.Finished } && queue.Count > 0 && now >= nextQueued)
         {
-            var (opp, crafts, backend, plan) = queue.Dequeue();
+            var next = queue.Dequeue();
             Job = null;
-            if (Start(opp, crafts, backend, plan) is { } error)
+            if (Start(next.Opp, next.Crafts, next.Backend, next.Plan, next.Destination) is { } error)
             {
                 queue.Clear();
-                Plugin.Log.Warning($"[SellWise] Queued job for {opp.Item.Name} didn't start: {error}");
+                Plugin.Log.Warning($"[SellWise] Queued job for {next.Opp.Item.Name} didn't start: {error}");
             }
             return;
         }
@@ -301,7 +313,20 @@ public sealed class CraftCoordinator
         {
             if (now < startAt) return;
             job.ArtisanStartAtUtc = null;
+            BeginArtisan(job);
+            return;
+        }
+        if (job.WaitingForTravel)
+        {
+            if (travel.IsBusy)
+            {
+                job.Status = travel.Status;
+                return;
+            }
+            job.WaitingForTravel = false;
+            job.Traveled = true;
             StartArtisanStep(job);
+            if (travel.Failed) job.Status = $"{travel.Status} {job.Status}";
             return;
         }
 
@@ -471,6 +496,19 @@ public sealed class CraftCoordinator
             return;
         }
 
+        StartArtisanStep(job);
+    }
+
+    /// <summary>Starts Artisan, first heading to the quest giver when the job has somewhere to be.</summary>
+    private void BeginArtisan(CraftJob job)
+    {
+        if (job.Destination is { } destination && !job.Traveled)
+        {
+            job.WaitingForTravel = true;
+            travel.Start(destination);
+            job.Status = travel.Status;
+            return;
+        }
         StartArtisanStep(job);
     }
 

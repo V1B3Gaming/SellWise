@@ -9,6 +9,7 @@ public enum JobPhase
 {
     Repairing,
     Gathering,
+    Travelling,
     CraftingParts,
     Crafting,
     Done,
@@ -109,6 +110,7 @@ public sealed class JobEstimator
         CraftJobState.Stopped => JobPhase.Stopped,
         CraftJobState.Failed => JobPhase.Failed,
         _ when job.WaitingForRepair => JobPhase.Repairing,
+        _ when job.WaitingForTravel => JobPhase.Travelling,
         _ when job.Made == 0 && estimate.Materials.Any(m => m.Line.Source == MaterialSource.Gather && m.Have + m.OnRetainers < m.Need) => JobPhase.Gathering,
         _ when job.Made == 0 && estimate.Parts.Any(p => !p.Done) => JobPhase.CraftingParts,
         _ => JobPhase.Crafting,

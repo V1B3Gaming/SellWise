@@ -59,6 +59,7 @@ public sealed class JobStatusWindow : Window
             {
                 JobPhase.Repairing => ("Repairing gear", Theme.Hold),
                 JobPhase.Gathering => ("Gathering materials", Theme.Gather),
+                JobPhase.Travelling => ("Heading to the quest giver", Theme.Vendor),
                 JobPhase.CraftingParts => ("Crafting the parts", Theme.Current.Color),
                 JobPhase.Crafting => ("Crafting", Theme.Current.Color),
                 JobPhase.Done => ("Done", Theme.Good),
