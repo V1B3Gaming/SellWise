@@ -92,6 +92,19 @@ The Craft section's third tab, **Job quests**, is for crafter and gatherer quest
 - **Making it:** **Make** crafts one item, **Make all** does everything the quest still needs, and **Make everything** at the top does it for every quest you can do now, one job after another (GatherBuddy gathers, Artisan crafts). Items you only gather have a **Gather** button that sends you to the node with GatherBuddy.
 - **Crafting at the quest giver:** once the gathering's done, SellWise takes you to the quest giver before Artisan crafts, so you can hand the items straight in. It teleports to the zone's aetheryte, or for givers off the main aetheryte (Old Gridania, the Steps of Thal, the Upper Decks, the Pillars) teleports to the city and takes the aethernet with [Lifestream](https://github.com/NightmareXIV/Lifestream), then walks the rest with vnavmesh. Turn it off with "Craft next to the quest giver" on the quest.
 
+### Hunting mob drops
+
+Some materials only drop from monsters. Wherever SellWise lists materials (Craft for profit, Any recipe, Scrips, Job quests), those get a **Hunt** button. Hover it to see which monsters drop the item and where; the drop data comes from [Garland Tools](https://www.garlandtools.org), since the game files don't include drop tables.
+
+Press it and SellWise:
+- picks the easiest open-world spot you can reach (an aetheryte you're attuned to, monsters no more than 3 levels above your best combat job),
+- switches to your highest-level combat gearset,
+- teleports and rides there (mounting for long trips),
+- targets the nearest monster of that kind that nobody else is fighting and walks up to it, while [WrathCombo](https://github.com/PunishXIV/WrathCombo) or [RotationSolver Reborn](https://github.com/FFXIV-CombatReborn/RotationSolverReborn) does the fighting,
+- stops once you have enough.
+
+It stops and tells you why if you're defeated, the monsters are too high a level, or none turn up for three minutes. WrathCombo lends SellWise its auto-rotation for the hunt and puts your own settings back afterwards; with RotationSolver, SellWise switches it to Manual mode and back off.
+
 ## Scrips
 
 The **Scrips** tab is for farming purple and orange crafters' scrips.
@@ -150,6 +163,7 @@ SellWise doesn't buy anything at the scrip exchange. You do the buying; it keeps
 - [GatherBuddy Reborn](https://github.com/FFXIV-CombatReborn/GatherBuddyReborn): Gather + craft, the per-material Gather buttons, and potions/food while gathering (turned on in its own settings)
 - [Lifestream](https://github.com/NightmareXIV/Lifestream): the aethernet hop to job quest givers in Old Gridania, the Steps of Thal, the Upper Decks and the Pillars
 - [Artisan](https://github.com/PunishXIV/Artisan): Craft with Artisan
+- [WrathCombo](https://github.com/PunishXIV/WrathCombo) or [RotationSolver Reborn](https://github.com/FFXIV-CombatReborn/RotationSolverReborn): the fighting when you hunt mob drops (SellWise never fights on its own)
 
 **Building it yourself**
 - .NET 10 SDK and Dalamud.NET.Sdk 15.0.0, which uses the Dalamud files XIVLauncher installs. Tests use xUnit.
@@ -165,6 +179,8 @@ dotnet test SellWise.Tests
 - The HQ check assumes normal-quality materials and no lucky conditions, so real crafts should do at least as well.
 - Letting Artisan do the crafting is on by default (Settings, "Let Artisan do the crafting after GatherBuddy gathers"). GatherBuddy has no plugin interface for stopping its queue, so SellWise uses its `/gatherdebug repairstop` command, which calls the same stop as its own Stop button; you'll see a debug line in chat when it does.
 - If you turn that off, set GatherBuddy's crafter to **Standard Solver** for max quality (`/vulcan`, Settings, Solver Mode). On Pure Raphael, GatherBuddy only plans for normal-quality materials, so crafts that use the HQ parts it just made get no quality at all. SellWise reads that setting and warns you before you start.
+- Hunting automates combat in the open world, which is the most visible kind of automation. Stay at your keyboard, and keep in mind it's against the game's terms like any automation plugin. SellWise leaves monsters other players are already fighting alone.
+- Mob drop locations come from Garland Tools and are community-gathered, so some items have no listed drops and a few spots may be out of date.
 - Prices come from what other players have uploaded to Universalis. Rarely-checked items can have stale prices.
 
 ## Credits

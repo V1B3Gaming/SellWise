@@ -33,6 +33,7 @@ public sealed class CraftView
     private uint selectedRecipe;
     private int quantity = 1;
     private string? startError;
+    private string? huntError;
 
     // Your own pick of source for particular materials, per recipe (recipe id -> item id -> source).
     private readonly Dictionary<uint, Dictionary<uint, MaterialSource>> picks = [];
@@ -503,13 +504,41 @@ public sealed class CraftView
                 if (ImGui.SmallButton($"Gather##g{i}")) Plugin.CommandManager.ProcessCommand($"/gather {m.Name}");
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("GatherBuddy teleports you to the nearest node and marks it.");
             }
-            else if (short_ && m.Source == MaterialSource.Buy)
+            else if (short_ && m.Source is MaterialSource.Buy or MaterialSource.Unknown)
             {
                 ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - 80);
-                if (ImGui.SmallButton($"Prices##u{i}")) Util.OpenLink($"https://universalis.app/market/{m.ItemId}");
+                if (!DrawHuntButton(m.ItemId, m.Name, need - bags, $"h{i}") && m.Source == MaterialSource.Buy)
+                {
+                    if (ImGui.SmallButton($"Prices##u{i}")) Util.OpenLink($"https://universalis.app/market/{m.ItemId}");
+                }
             }
             _ = col;
         }
+    }
+
+    /// <summary>
+    /// A Hunt button for materials monsters drop (looked up on Garland Tools the first time). Returns false, drawing
+    /// nothing, when no monster in the open world is known to drop it.
+    /// </summary>
+    public bool DrawHuntButton(uint itemId, string name, int missing, string id)
+    {
+        if (plugin.MobDrops.Spots(itemId) is not { Count: > 0 } spots) return false;
+        var (spot, problem) = MobHunter.Choose(spots);
+        using (ImRaii.Disabled(spot == null || plugin.Hunter.IsBusy || plugin.Crafter.IsRunning || !CombatAssist.Available))
+        {
+            if (ImGui.SmallButton($"Hunt##{id}")) huntError = plugin.StartHunt(itemId, name, missing);
+        }
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
+            var where = string.Join("\n", spots.Take(4).Select(s => $"  {s.Mob.Name} (lv {s.Mob.Level}) in {s.ZoneName}"));
+            ImGui.SetTooltip($"Dropped by:\n{where}\n\n" +
+                             (!CombatAssist.Available ? "Install WrathCombo or RotationSolver Reborn to hunt: SellWise doesn't fight on its own."
+                              : spot == null ? problem
+                              : $"Hunt {missing} from {spot.Mob.Name} in {spot.ZoneName}: SellWise switches to your best combat gearset, travels there\n" +
+                                "and targets them one at a time while your rotation plugin fights.") +
+                             (huntError != null ? $"\n\n{huntError}" : ""));
+        }
+        return true;
     }
 
     private void DrawSourcePopup(CraftOpportunity o, MaterialLine m, int i)

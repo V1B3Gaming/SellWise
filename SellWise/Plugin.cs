@@ -50,6 +50,9 @@ public sealed class Plugin : IDalamudPlugin
     public TurnInService TurnIn { get; }
     public JobQuestService JobQuests { get; }
     public QuestTravel Travel { get; }
+    public MobDropService MobDrops { get; }
+    public CombatAssist Combat { get; }
+    public MobHunter Hunter { get; }
 
     private readonly WindowSystem windows = new("SellWise");
     private readonly MainWindow mainWindow;
@@ -72,6 +75,10 @@ public sealed class Plugin : IDalamudPlugin
         Teleporter = new CityTeleporter();
         Repair = new RepairService(Config, Teleporter);
         Travel = new QuestTravel();
+        MobDrops = new MobDropService(PluginInterface.ConfigDirectory);
+        Combat = new CombatAssist();
+        Hunter = new MobHunter(Travel, Combat);
+        Crafter.Busy = () => Hunter.IsBusy ? "Stop the hunt first." : null;
         Crafter = new CraftCoordinator(Tracker, Repair, Travel);
         Quality = new QualityService(Config, Market, Tracker, Scanner);
         Estimator = new JobEstimator(this);
@@ -117,6 +124,21 @@ public sealed class Plugin : IDalamudPlugin
         jobWindow.IsOpen = true;
     }
 
+    /// <summary>
+    /// Hunts monsters for a material that only drops from them: picks the easiest spot you can reach and goes.
+    /// Returns an error, or null once the hunt has started.
+    /// </summary>
+    public string? StartHunt(uint itemId, string itemName, int more)
+    {
+        if (Crafter.IsRunning) return "Finish or stop the craft job first.";
+        if (MobDrops.Spots(itemId) is not { } spots) return "Still looking up which monsters drop it...";
+        var (spot, problem) = MobHunter.Choose(spots);
+        if (spot == null) return problem;
+        var error = Hunter.Start(itemId, itemName, more, spot);
+        if (error == null) MinimizeToJob();
+        return error;
+    }
+
     private void OnCommand(string command, string args)
     {
         switch (args.Trim().ToLowerInvariant())
@@ -138,6 +160,7 @@ public sealed class Plugin : IDalamudPlugin
             case "stop":
                 Repair.Stop();
                 TurnIn.Stop();
+                Hunter.Stop();
                 Crafter.Stop();
                 Navigator.Stop();
                 break;
@@ -176,6 +199,7 @@ public sealed class Plugin : IDalamudPlugin
         Repair.Update();
         Quality.Update();
         Travel.Update();
+        Hunter.Update();
         Crafter.Update();
         TurnIn.Update();
         ScripTracker.Update();
@@ -247,6 +271,8 @@ public sealed class Plugin : IDalamudPlugin
         dtrEntry?.Remove();
         windows.RemoveAllWindows();
         Theme.DisposeFonts();
+        Hunter.Stop();
+        MobDrops.Dispose();
         Scrips.Dispose();
         Scanner.Dispose();
         Market.Dispose();

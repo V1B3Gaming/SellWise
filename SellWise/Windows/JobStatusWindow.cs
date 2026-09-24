@@ -28,7 +28,7 @@ public sealed class JobStatusWindow : Window
         this.plugin = plugin;
     }
 
-    public override bool DrawConditions() => plugin.Crafter.Job != null;
+    public override bool DrawConditions() => plugin.Crafter.Job != null || plugin.Hunter.HasResult;
 
     public override void PreDraw() => theme = Theme.Push();
 
@@ -41,7 +41,11 @@ public sealed class JobStatusWindow : Window
     public override void Draw()
     {
         using var layout = Theme.PushLayout();
-        if (plugin.Crafter.Job is not { } job) return;
+        if (plugin.Crafter.Job is not { } job)
+        {
+            DrawHunt();
+            return;
+        }
 
         var o = job.Opportunity;
         var estimate = plugin.Estimator.Estimate(o, job.Crafts, job.Made, job.Backend);
@@ -197,6 +201,37 @@ public sealed class JobStatusWindow : Window
         ImGui.SameLine();
         Theme.Muted($"({estimate.ActionsPerCraft} steps per craft)");
         if (job.Status.Length > 0) Theme.Wrapped(job.Status, Theme.Text3);
+    }
+
+    private void DrawHunt()
+    {
+        var hunter = plugin.Hunter;
+        ImGui.Dummy(new Vector2(Width, 0));
+        Theme.Icon(plugin.Catalog.Get(hunter.ItemId)?.Icon ?? 0, false, 40);
+        ImGui.SameLine(0, 10);
+        using (ImRaii.Group())
+        {
+            ImGui.TextUnformatted(Theme.Fit($"Hunting {hunter.ItemName}", Width - 60));
+            var (label, color) = hunter.IsBusy ? ("Hunting", Theme.Hold) : hunter.Failed ? ("Stopped", Theme.Bad) : ("Done", Theme.Good);
+            ImGui.TextColored(color, label);
+        }
+        ImGui.Separator();
+        if (hunter.Spot is { } spot) Theme.Muted($"{spot.Mob.Name} (lv {spot.Mob.Level}) in {spot.ZoneName}");
+        using (ImRaii.PushColor(ImGuiCol.FrameBg, Theme.Raise2))
+            ImGui.ProgressBar(hunter.Wanted > 0 ? Math.Clamp(hunter.Have / (float)hunter.Wanted, 0, 1) : 0, new Vector2(Width, 22), $"{hunter.Have} / {hunter.Wanted}");
+        Theme.Muted($"{hunter.Kills} kills");
+        Theme.Wrapped(hunter.Status, hunter.Failed ? Theme.Bad : Theme.Text2);
+        ImGui.Separator();
+        if (hunter.IsBusy)
+        {
+            if (ImGui.Button("Stop")) hunter.Stop();
+        }
+        else if (ImGui.Button("Close"))
+        {
+            hunter.Dismiss();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Open SellWise")) plugin.ShowCraft();
     }
 
     private void DrawDone(CraftJob job)

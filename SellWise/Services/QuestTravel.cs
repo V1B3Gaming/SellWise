@@ -21,7 +21,10 @@ public sealed unsafe class QuestTravel
 {
     private const float ArriveRange = 5f;
     private const uint DismountAction = 23;
+    private const uint MountRouletteAction = 9;
+    private const float MountAbove = 60f;
     private const byte AethernetMarker = 4;
+    private const byte AetheryteMarker = 3;
 
     private enum Step
     {
@@ -53,6 +56,10 @@ public sealed unsafe class QuestTravel
     private Shard? shard;
     private bool walkRequested;
     private Dictionary<uint, List<Shard>>? shardsByTerritory;
+    private Dictionary<uint, Vector2> aetherytePositions = [];
+    private readonly ICallGateSubscriber<Vector3, float, float, Vector3?> nearestPoint;
+    private string fallback = "Crafting here instead.";
+    private DateTime mountTried;
 
     public QuestTravel()
     {
@@ -64,6 +71,7 @@ public sealed unsafe class QuestTravel
         pathStop = pi.GetIpcSubscriber<object>("vnavmesh.Path.Stop");
         lifestreamAethernet = pi.GetIpcSubscriber<uint, bool>("Lifestream.AethernetTeleportByPlaceNameId");
         lifestreamBusy = pi.GetIpcSubscriber<bool>("Lifestream.IsBusy");
+        nearestPoint = pi.GetIpcSubscriber<Vector3, float, float, Vector3?>("vnavmesh.Query.Mesh.NearestPoint");
     }
 
     public static bool LifestreamAvailable => Plugin.PluginInterface.InstalledPlugins.Any(p => p.InternalName == "Lifestream" && p.IsLoaded);
@@ -74,16 +82,25 @@ public sealed unsafe class QuestTravel
     /// <summary>The last trip ended short of the target (the caller carries on where you are).</summary>
     public bool Failed { get; private set; }
 
-    public static bool IsNear(TravelTarget t)
-        => Plugin.ClientState.TerritoryType == t.TerritoryId && Plugin.ObjectTable.LocalPlayer is { } p && Vector3.Distance(p.Position, t.Position) <= ArriveRange + 3;
+    public static bool IsNear(TravelTarget t, float range = ArriveRange + 3)
+        => Plugin.ClientState.TerritoryType == t.TerritoryId && Plugin.ObjectTable.LocalPlayer is { } p && Distance(p.Position, t.Position) <= range;
 
-    /// <summary>Must be called on the framework thread.</summary>
-    public void Start(TravelTarget t)
+    /// <summary>Distance that ignores height when the target's height isn't known yet (NaN).</summary>
+    private static float Distance(Vector3 a, Vector3 b)
+        => float.IsNaN(b.Y) ? Vector2.Distance(new Vector2(a.X, a.Z), new Vector2(b.X, b.Z)) : Vector3.Distance(a, b);
+
+    /// <summary>
+    /// Must be called on the framework thread. <paramref name="whenStuck"/> finishes the message when the trip can't be
+    /// made (what the caller does instead). A target with an unknown height (NaN Y) gets it from the navmesh on arrival.
+    /// </summary>
+    public void Start(TravelTarget t, string whenStuck = "Crafting here instead.")
     {
+        fallback = whenStuck;
         target = t;
         shard = null;
         Failed = false;
         walkRequested = false;
+        mountTried = default;
         if (IsNear(t))
         {
             Status = $"Next to {t.Name}.";
@@ -196,8 +213,13 @@ public sealed unsafe class QuestTravel
         var ui = UIState.Instance();
         var aetherytes = Plugin.DataManager.GetExcelSheet<Aetheryte>();
 
-        // The zone has its own aetheryte: go straight there.
-        var direct = aetherytes.FirstOrDefault(a => a.IsAetheryte && a.Territory.RowId == t.TerritoryId && ui->IsAetheryteUnlocked(a.RowId));
+        // The zone has its own aetheryte: go straight to the one nearest the target (field zones have several).
+        Shards();
+        var target2d = new Vector2(t.Position.X, t.Position.Z);
+        var direct = aetherytes
+            .Where(a => a.IsAetheryte && a.Territory.RowId == t.TerritoryId && ui->IsAetheryteUnlocked(a.RowId))
+            .OrderBy(a => aetherytePositions.TryGetValue(a.RowId, out var p) ? Vector2.Distance(p, target2d) : float.MaxValue)
+            .FirstOrDefault();
         if (direct.RowId != 0)
         {
             Teleport(direct.RowId, t);
@@ -209,17 +231,17 @@ public sealed unsafe class QuestTravel
         var nearest = stops.OrderBy(s => Vector2.Distance(s.Position, new Vector2(t.Position.X, t.Position.Z))).FirstOrDefault();
         if (nearest == null)
         {
-            Fail($"SellWise doesn't know how to get to {t.Name}'s area. Crafting here instead.");
+            Fail($"SellWise doesn't know how to get to {t.Name}'s area. {fallback}");
             return;
         }
         if (!LifestreamAvailable)
         {
-            Fail($"{t.Name} is off the aethernet; install Lifestream so SellWise can take it. Crafting here instead.");
+            Fail($"{t.Name} is off the aethernet; install Lifestream so SellWise can take it. {fallback}");
             return;
         }
         if (!ui->IsAetheryteUnlocked(nearest.MainAetheryteId))
         {
-            Fail($"You haven't attuned to the aetheryte near {t.Name}. Crafting here instead.");
+            Fail($"You haven't attuned to the aetheryte near {t.Name}. {fallback}");
             return;
         }
         shard = nearest;
@@ -242,7 +264,23 @@ public sealed unsafe class QuestTravel
     {
         var player = Plugin.ObjectTable.LocalPlayer;
         if (player == null) return;
-        if (Vector3.Distance(player.Position, t.Position) <= ArriveRange)
+
+        // Hunting spots come without a height: ask the navmesh for the ground there.
+        if (float.IsNaN(t.Position.Y))
+        {
+            if (!SafeNavReady()) return;
+            Vector3? ground = null;
+            try { ground = nearestPoint.InvokeFunc(new Vector3(t.Position.X, player.Position.Y, t.Position.Z), 15, 1000); } catch { /* vnavmesh not loaded */ }
+            if (ground is not { } g)
+            {
+                Fail($"vnavmesh couldn't find ground near {t.Name}. {fallback}");
+                return;
+            }
+            target = t = t with { Position = g };
+        }
+
+        var distance = Vector3.Distance(player.Position, t.Position);
+        if (distance <= ArriveRange)
         {
             StopWalking();
             Go(Step.Dismount);
@@ -252,13 +290,24 @@ public sealed unsafe class QuestTravel
         {
             if (!BellNavigator.VnavmeshLoaded)
             {
-                Fail("vnavmesh isn't loaded, so SellWise can't walk the last bit. Crafting here instead.");
+                Fail($"vnavmesh isn't loaded, so SellWise can't walk the last bit. {fallback}");
                 return;
             }
             if (!SafeNavReady()) return;
-            Status = $"Walking to {t.Name}...";
+            if (distance > MountAbove && !Plugin.Condition[ConditionFlag.Mounted] && CanMountHere())
+            {
+                // A long way: mount first (vnavmesh rides just the same). One try; walk if it doesn't work.
+                if (mountTried == default)
+                {
+                    mountTried = DateTime.UtcNow;
+                    ActionManager.Instance()->UseAction(ActionType.GeneralAction, MountRouletteAction);
+                    Status = $"Mounting up for the ride to {t.Name}...";
+                }
+                if (DateTime.UtcNow - mountTried < TimeSpan.FromSeconds(4)) return;
+            }
+            Status = $"{(Plugin.Condition[ConditionFlag.Mounted] ? "Riding" : "Walking")} to {t.Name}...";
             walkRequested = moveCloseTo.InvokeFunc(t.Position, false, ArriveRange - 1);
-            if (!walkRequested) Fail($"vnavmesh couldn't find a path to {t.Name}. Crafting here instead.");
+            if (!walkRequested) Fail($"vnavmesh couldn't find a path to {t.Name}. {fallback}");
             return;
         }
         if (!pathIsRunning.InvokeFunc() && !pathfindInProgress.InvokeFunc() && Since() > TimeSpan.FromSeconds(2))
@@ -276,6 +325,7 @@ public sealed unsafe class QuestTravel
         var markers = data.GetSubrowExcelSheet<MapMarker>();
         var result = new Dictionary<uint, List<Shard>>();
 
+        var positions = new Dictionary<uint, Vector2>();
         foreach (var territory in data.GetExcelSheet<TerritoryType>())
         {
             if (territory.Map.ValueNullable is not { } map || map.SizeFactor == 0) continue;
@@ -283,6 +333,8 @@ public sealed unsafe class QuestTravel
             var scale = map.SizeFactor / 100f;
             foreach (var m in rows)
             {
+                if (m.DataType == AetheryteMarker)
+                    positions.TryAdd(m.DataKey.RowId, new Vector2((m.X - 1024f) / scale - map.OffsetX, (m.Y - 1024f) / scale - map.OffsetY));
                 if (m.DataType != AethernetMarker || !byPlace.TryGetValue(m.DataKey.RowId, out var a) || a.Territory.RowId != territory.RowId) continue;
                 if (!mainByGroup.TryGetValue(a.AethernetGroup, out var main)) continue;
                 var pos = new Vector2((m.X - 1024f) / scale - map.OffsetX, (m.Y - 1024f) / scale - map.OffsetY);
@@ -290,8 +342,13 @@ public sealed unsafe class QuestTravel
                 list.Add(new Shard(a.RowId, m.DataKey.RowId, territory.RowId, pos, main));
             }
         }
+        aetherytePositions = positions;
         return shardsByTerritory = result;
     }
+
+    private static bool CanMountHere()
+        => Plugin.DataManager.GetExcelSheet<TerritoryType>().GetRowOrDefault(Plugin.ClientState.TerritoryType)?.Mount == true
+           && !Plugin.Condition[ConditionFlag.InCombat];
 
     private static uint AetheryteTerritory(uint aetheryteId)
         => Plugin.DataManager.GetExcelSheet<Aetheryte>().GetRowOrDefault(aetheryteId)?.Territory.RowId ?? 0;

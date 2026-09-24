@@ -119,6 +119,9 @@ public sealed class CraftCoordinator
 
     public bool IsRunning => Job is { State: CraftJobState.Running };
 
+    /// <summary>Something else that has to finish first (a hunt), or null.</summary>
+    public Func<string?>? Busy { get; set; }
+
     /// <summary>Jobs waiting to start after the current one.</summary>
     public int Queued => queue.Count;
 
@@ -174,6 +177,7 @@ public sealed class CraftCoordinator
     public string? Start(CraftOpportunity opp, int crafts, CraftBackend backend, CraftOpportunity? artisanPlan = null, TravelTarget? destination = null)
     {
         if (IsRunning) return "A craft job is already running.";
+        if (Busy?.Invoke() is { } busy) return busy;
         if (crafts <= 0) return "Pick a quantity.";
         if (opp.LockedReason is { } locked) return $"You can't craft this yet: {locked}.";
 

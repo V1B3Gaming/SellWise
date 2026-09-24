@@ -307,6 +307,7 @@ public sealed class JobQuestView
             }
             if (p.Craft == null && !p.Gatherable && !p.Fish)
             {
+                if (missing > 0 && craftView.DrawHuntButton(p.Item.ItemId, p.Item.Name, missing, $"qh{index}")) ImGui.SameLine();
                 if (ImGui.Button($"Prices##buy{index}")) Util.OpenLink($"https://universalis.app/market/{p.Item.ItemId}");
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Not craftable or gatherable: buy it on the market board or from a vendor.");
             }
