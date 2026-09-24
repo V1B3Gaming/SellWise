@@ -21,7 +21,7 @@ public sealed class MainWindow : Window
 {
     private enum View { Sell, Listings, Craft, Retainers }
 
-    private const float NavWidth = 78;
+    private const float NavWidth = 90;
     private const float ListWidth = 430;
     private const float RowHeight = 58;
 
@@ -143,7 +143,7 @@ public sealed class MainWindow : Window
     /// <summary>A sidebar button: icon over a small label, filled when active.</summary>
     private static bool ToolItem(string id, FontAwesomeIcon icon, string label, Vector4 color, bool active = false, string? badge = null)
     {
-        var size = new Vector2(64, 54);
+        var size = new Vector2(76, 54);
         var pos = ImGui.GetCursorScreenPos();
         var clicked = ImGui.InvisibleButton($"##nav{id}", size);
         var hovered = ImGui.IsItemHovered();

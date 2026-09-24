@@ -309,7 +309,7 @@ public sealed class CraftView
                 if (rotation.Count > 0)
                 {
                     using var node = ImRaii.TreeNode($"Estimated rotation ({rotation.Count} steps)##rot");
-                    if (node) Theme.Wrapped(string.Join(" › ", rotation.Select(Spaced)), Theme.Text2);
+                    if (node) Theme.Wrapped(string.Join(" > ", rotation.Select(Spaced)), Theme.Text2);
                 }
             }
             ImGui.PopTextWrapPos();
@@ -383,22 +383,19 @@ public sealed class CraftView
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip($"{bags:N0} in your bags, {retainers:N0} on retainers." + (bags < need && bags + retainers >= need ? "\nVulcan can pull these; for Artisan, withdraw them first." : ""));
 
-            ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - 80);
-            if (bags < need)
+            // Every row must end its line, whether or not it gets a button; otherwise the next
+            // material is drawn on top of this one.
+            var short_ = bags < need;
+            if (short_ && m.Source == MaterialSource.Gather && CraftCoordinator.VulcanAvailable)
             {
-                if (m.Source == MaterialSource.Gather && CraftCoordinator.VulcanAvailable)
-                {
-                    if (ImGui.SmallButton($"Gather##g{i}")) Plugin.CommandManager.ProcessCommand($"/gather {m.Name}");
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("GatherBuddy teleports you to the nearest node and marks it.");
-                }
-                else if (m.Source == MaterialSource.Buy)
-                {
-                    if (ImGui.SmallButton($"Prices##u{i}")) Util.OpenLink($"https://universalis.app/market/{m.ItemId}");
-                }
+                ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - 80);
+                if (ImGui.SmallButton($"Gather##g{i}")) Plugin.CommandManager.ProcessCommand($"/gather {m.Name}");
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("GatherBuddy teleports you to the nearest node and marks it.");
             }
-            else
+            else if (short_ && m.Source == MaterialSource.Buy)
             {
-                ImGui.NewLine();
+                ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - 80);
+                if (ImGui.SmallButton($"Prices##u{i}")) Util.OpenLink($"https://universalis.app/market/{m.ItemId}");
             }
             _ = col;
         }
@@ -411,7 +408,7 @@ public sealed class CraftView
         ImGui.AlignTextToFramePadding();
         Theme.Secondary("Crafts");
         ImGui.SameLine();
-        if (ImGui.Button("−##less", new Vector2(ImGui.GetFrameHeight()))) quantity = Math.Max(1, quantity - 1);
+        if (ImGui.Button("-##less", new Vector2(ImGui.GetFrameHeight()))) quantity = Math.Max(1, quantity - 1);
         ImGui.SameLine(0, 4);
         ImGui.SetNextItemWidth(46);
         if (ImGui.InputInt("##qty", ref quantity, 0, 0)) quantity = Math.Clamp(quantity, 1, 999);
