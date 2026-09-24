@@ -1,0 +1,61 @@
+# Push a tag like v0.2.0 to build, test, publish a release with latest.zip,
+# and bump repo.json so Dalamud offers the update.
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Download Dalamud
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile dalamud.zip
+          Expand-Archive dalamud.zip "$env:AppData\XIVLauncher\addon\Hooks\dev" -Force
+
+      - name: Work out version
+        id: version
+        shell: pwsh
+        run: |
+          $v = [version]"${{ github.ref_name }}".TrimStart('v')
+          $full = '{0}.{1}.{2}.{3}' -f $v.Major, $v.Minor, [Math]::Max(0, $v.Build), [Math]::Max(0, $v.Revision)
+          "full=$full" >> $env:GITHUB_OUTPUT
+
+      - name: Test
+        run: dotnet test SellWise.Tests -c Release
+
+      - name: Build
+        run: dotnet build SellWise/SellWise.csproj -c Release -p:Version=${{ steps.version.outputs.full }}
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: SellWise/bin/Release/SellWise/latest.zip
+          generate_release_notes: true
+
+      - name: Update repo.json
+        shell: pwsh
+        run: |
+          git fetch origin main
+          git checkout main
+          $json = Get-Content repo.json -Raw
+          $json = $json -replace '"AssemblyVersion": "[^"]*"', '"AssemblyVersion": "${{ steps.version.outputs.full }}"'
+          $json = $json -replace '"LastUpdate": \d+', ('"LastUpdate": ' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+          [IO.File]::WriteAllText("$PWD/repo.json", $json)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add repo.json
+          git commit -m "Update repo.json to ${{ steps.version.outputs.full }}"
+          git push origin main

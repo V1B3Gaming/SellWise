@@ -1,0 +1,20 @@
+[
+  {
+    "Author": "VIB3",
+    "Name": "SellWise",
+    "InternalName": "SellWise",
+    "AssemblyVersion": "0.1.0.0",
+    "Description": "Scans your bags, saddlebags and retainers, pulls live prices from Universalis, and recommends what to list, relist, vendor or hold, with suggested prices. Finds profitable crafts you can make and hands them to GatherBuddy Reborn or Artisan to gather and craft.",
+    "Punchline": "Know what to sell, where, and for how much.",
+    "ApplicableVersion": "any",
+    "RepoUrl": "https://github.com/V1B3Gaming/SellWise",
+    "Tags": [ "market", "retainer", "universalis", "gil", "crafting" ],
+    "DalamudApiLevel": 15,
+    "LoadPriority": 0,
+    "AcceptsFeedback": false,
+    "DownloadLinkInstall": "https://github.com/V1B3Gaming/SellWise/releases/latest/download/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/V1B3Gaming/SellWise/releases/latest/download/latest.zip",
+    "DownloadLinkTesting": "https://github.com/V1B3Gaming/SellWise/releases/latest/download/latest.zip",
+    "LastUpdate": 0
+  }
+]

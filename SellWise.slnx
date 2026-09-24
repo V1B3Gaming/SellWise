@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="SellWise.Tests/SellWise.Tests.csproj" />
+  <Project Path="SellWise/SellWise.csproj" />
+</Solution>
