@@ -87,7 +87,8 @@ public sealed class JobRunner
 
         // Raw materials GatherBuddy can't gather, across every item, less what's already in your bags. Parts you
         // hold already take their own materials off the list (see NeedsAfterWhatYouHave).
-        candidates = Shortfall().Where(x => x.Line.Source is MaterialSource.Buy or MaterialSource.Unknown)
+        // NPC-sold items count too: GatherBuddy doesn't buy them in this pipeline.
+        candidates = Shortfall().Where(x => x.Line.Source is MaterialSource.Buy or MaterialSource.Unknown or MaterialSource.Vendor)
             .Select(x => (x.Line.ItemId, x.Line.Name, x.Missing)).ToList();
         if (candidates.Count == 0)
         {
@@ -129,12 +130,13 @@ public sealed class JobRunner
                 {
                     if (spots is not { Count: > 0 })
                     {
-                        toBuy.Add($"{c.Name} x{c.Missing}");
+                        toBuy.Add($"{c.Name} x{c.Missing}" + (VendorName(c.ItemId) is { } npc ? $" (from {npc})" : " (market board)"));
                         continue;
                     }
                     // Fewer teleports: the zone you're in, or one another hunt already goes to, wins if it's suitable.
                     var (spot, problem) = MobHunter.Choose(spots, [here, .. planned.Select(p => p.Spot.TerritoryId)]);
                     if (spot != null) planned.Add(new Hunt(c.ItemId, c.Name, c.Missing, spot));
+                    else if (VendorName(c.ItemId) is { } seller) toBuy.Add($"{c.Name} x{c.Missing} (from {seller}; can't hunt it: {problem})");
                     else problems.Add($"{c.Name}: {problem}");
                 }
                 if (toBuy.Count > 0)
@@ -194,6 +196,33 @@ public sealed class JobRunner
                 else CheckEverythingGathered();
                 break;
         }
+    }
+
+    private readonly Dictionary<uint, string?> vendorNames = [];
+
+    /// <summary>An NPC that sells the item for gil, or null.</summary>
+    private string? VendorName(uint itemId)
+    {
+        if (vendorNames.TryGetValue(itemId, out var cached)) return cached;
+        string? name = null;
+        var data = Plugin.DataManager;
+        var shops = new HashSet<uint>();
+        foreach (var shop in data.GetSubrowExcelSheet<Lumina.Excel.Sheets.GilShopItem>())
+            foreach (var entry in shop)
+                if (entry.Item.RowId == itemId) shops.Add(shop.RowId);
+        if (shops.Count > 0)
+        {
+            var residents = data.GetExcelSheet<Lumina.Excel.Sheets.ENpcResident>();
+            foreach (var npc in data.GetExcelSheet<Lumina.Excel.Sheets.ENpcBase>())
+            {
+                if (!npc.ENpcData.Any(d => shops.Contains(d.RowId))) continue;
+                name = residents.GetRowOrDefault(npc.RowId)?.Singular.ExtractText();
+                if (!string.IsNullOrEmpty(name)) break;
+            }
+            name ??= "an NPC vendor";
+        }
+        vendorNames[itemId] = name;
+        return name;
     }
 
     /// <summary>Raw materials still missing across every item, after what's in your bags.</summary>

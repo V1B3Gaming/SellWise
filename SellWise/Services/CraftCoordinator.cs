@@ -45,6 +45,9 @@ public sealed class CraftJob
     public TravelTarget? Destination { get; init; }
     public bool WaitingForTravel { get; set; }
     public bool Traveled { get; set; }
+
+    /// <summary>When GatherBuddy finished gathering with something it can't get still missing.</summary>
+    public DateTime? StuckSince { get; set; }
     public DateTime? ArtisanStartAtUtc { get; set; }
     public int StartCount { get; init; }
     public int TargetCount { get; init; }
@@ -74,6 +77,7 @@ public sealed class CraftCoordinator
 {
     private static readonly TimeSpan ArtisanStartTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan HandoffSettle = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan StuckAfter = TimeSpan.FromSeconds(30);
 
     // GatherBuddy has no IPC to stop its crafting queue; this command calls the same stop as its status window.
     private const string VulcanStopCommand = "/gatherdebug repairstop";
@@ -401,7 +405,11 @@ public sealed class CraftCoordinator
         var plan = job.ArtisanPlan!;
         try
         {
-            if (gbrAutoGatherEnabled.InvokeFunc()) return; // still gathering
+            if (gbrAutoGatherEnabled.InvokeFunc())
+            {
+                job.StuckSince = null;
+                return; // still gathering
+            }
         }
         catch
         {
@@ -414,6 +422,24 @@ public sealed class CraftCoordinator
         var midCraft = SynthesisOpen();
         if (missing.Count > 0)
         {
+            // Gathering's over but what's missing isn't gatherable (an NPC or market item, a monster drop): GatherBuddy
+            // would just keep failing to start the craft. Stop it and say what's missing.
+            if (missing.All(m => m.Line.Source != MaterialSource.Gather))
+            {
+                job.StuckSince ??= now;
+                if (now - job.StuckSince > StuckAfter)
+                {
+                    Plugin.CommandManager.ProcessCommand(VulcanStopCommand);
+                    job.State = CraftJobState.Failed;
+                    job.Status = "GatherBuddy can't get " + string.Join(", ", missing.Select(m => $"{m.Line.Name} x{m.Missing} ({WhereFrom(m.Line.Source)})")) +
+                                 ", so SellWise stopped it. Get those (the Hunt button covers monster drops), then start again.";
+                    return;
+                }
+            }
+            else
+            {
+                job.StuckSince = null;
+            }
             if (midCraft)
                 job.Status = (job.GatherOnly ? "GatherBuddy started crafting before everything was gathered: " : "GatherBuddy is crafting. SellWise couldn't hand this to Artisan: ") +
                              string.Join(", ", missing.Take(3).Select(m => $"{m.Line.Name} x{m.Missing}")) + " isn't in your bags.";
@@ -446,6 +472,13 @@ public sealed class CraftCoordinator
         job.Status = "Gathering done. Handing the crafting to Artisan for max quality...";
         Plugin.Log.Information($"[SellWise] Handed {plan.Item.Name} x{remaining} from GatherBuddy to Artisan ({job.Steps.Count} steps)");
     }
+
+    private static string WhereFrom(MaterialSource source) => source switch
+    {
+        MaterialSource.Vendor => "an NPC sells it",
+        MaterialSource.Buy => "market board",
+        _ => "no known source",
+    };
 
     private static unsafe bool SynthesisOpen()
         => GenericHelpers.TryGetAddonByName<AtkUnitBase>("Synthesis", out var addon) && addon->IsVisible;
