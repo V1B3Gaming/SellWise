@@ -80,6 +80,7 @@ public sealed class MainWindow : Window
     {
         edgeToEdge?.Dispose();
         edgeToEdge = null;
+        using var layout = Theme.PushLayout();
 
         var avail = ImGui.GetContentRegionAvail();
         DrawNav(avail.Y);
@@ -614,7 +615,7 @@ public sealed class MainWindow : Window
         Theme.Wrapped("The game only lets plugins read a retainer's inventory while you're talking to it. Open each retainer at a summoning bell " +
                       "(opening its sell list also reads its listings). SellWise saves what it sees until the next visit.", Theme.Text2);
         if (tracker.Character is { } character)
-            Theme.Muted($"Saddlebag: {(character.SaddlebagScannedUtc is { } s ? $"scanned {Theme.Ago(s)}" : "not scanned yet (open it once)")}");
+            Theme.Muted($"Your chocobo saddlebag: {(character.SaddlebagScannedUtc is { } s ? $"scanned {Theme.Ago(s)}" : "not scanned yet (open it once)")}");
         ImGui.Spacing();
 
         using var table = ImRaii.Table("##retainerTable", 6, ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.PadOuterX);

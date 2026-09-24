@@ -29,6 +29,7 @@ public sealed class ConfigWindow : Window
 
     public override void Draw()
     {
+        using var layout = Theme.PushLayout();
         using var pad = ImRaii.PushStyle(ImGuiStyleVar.WindowPadding, new Vector2(16, 14));
         using var body = ImRaii.Child("##settings", Vector2.Zero, false, ImGuiWindowFlags.AlwaysUseWindowPadding);
         if (!body) return;
@@ -126,7 +127,7 @@ public sealed class ConfigWindow : Window
         ImGui.TextUnformatted("Inventory");
         ImGui.Separator();
         changed |= Check("Include retainers", c.IncludeRetainers, v => c.IncludeRetainers = v);
-        changed |= Check("Include saddlebags", c.IncludeSaddlebags, v => c.IncludeSaddlebags = v);
+        changed |= Check("Include your chocobo saddlebag", c.IncludeSaddlebags, v => c.IncludeSaddlebags = v);
         changed |= Check("Include crystals and shards", c.IncludeCrystals, v => c.IncludeCrystals = v);
         changed |= Check("Include armoury chest", c.IncludeArmory, v => c.IncludeArmory = v);
 

@@ -77,7 +77,10 @@ public static class Theme
     public static IDisposable? HeadingFont() => headingFont?.Push();
     public static IDisposable? BigFont() => bigFont?.Push();
 
-    /// <summary>Pushes the whole palette and geometry for one window. Dispose to pop.</summary>
+    /// <summary>
+    /// Pushes colours and corner rounding for a window (safe before Begin: none of it moves the title bar buttons).
+    /// Pair with <see cref="PushLayout"/> inside Draw. Dispose to pop.
+    /// </summary>
     public static IDisposable Push()
     {
         var a = Current;
@@ -122,13 +125,20 @@ public static class Theme
             .Push(ImGuiStyleVar.PopupRounding, 3f)
             .Push(ImGuiStyleVar.GrabRounding, 2f)
             .Push(ImGuiStyleVar.ScrollbarRounding, 2f)
-            .Push(ImGuiStyleVar.TabRounding, 3f)
-            .Push(ImGuiStyleVar.FramePadding, new Vector2(10, 6))
-            .Push(ImGuiStyleVar.ItemSpacing, new Vector2(8, 7))
-            .Push(ImGuiStyleVar.WindowPadding, new Vector2(10, 8));
+            .Push(ImGuiStyleVar.TabRounding, 3f);
 
         return new Popper(colors, style);
     }
+
+    /// <summary>
+    /// Spacing and padding for a window's contents. Push it inside Draw, not before Begin: the title bar's
+    /// collapse/close buttons and Dalamud's own title-bar buttons are laid out from FramePadding, and changing it
+    /// before Begin leaves their hit areas out of line with where they're drawn.
+    /// </summary>
+    public static IDisposable PushLayout()
+        => ImRaii.PushStyle(ImGuiStyleVar.FramePadding, new Vector2(10, 6))
+            .Push(ImGuiStyleVar.ItemSpacing, new Vector2(8, 7))
+            .Push(ImGuiStyleVar.WindowPadding, new Vector2(10, 8));
 
     private sealed class Popper(params IDisposable[] items) : IDisposable
     {

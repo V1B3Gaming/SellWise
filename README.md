@@ -20,7 +20,7 @@
 
 Ever stared at a full inventory and a stack of retainers and wondered what's actually worth anything? That's what SellWise is for.
 
-It looks through your bags, saddlebags and retainers, checks live prices on [Universalis](https://universalis.app), and tells you what to put on the market board, what to sell to a vendor, and what to sit on for now. When you want to make gil rather than just clear space, it finds the crafts worth making on your world and can hand the gathering and crafting off to GatherBuddy Reborn or Artisan.
+It looks through your bags, your chocobo saddlebag and your retainers, checks live prices on [Universalis](https://universalis.app), and tells you what to put on the market board, what to sell to a vendor, and what to sit on for now. When you want to make gil rather than just clear space, it finds the crafts worth making on your world and can hand the gathering and crafting off to GatherBuddy Reborn or Artisan.
 
 It won't touch the market board for you. It tells you the price; you do the listing.
 

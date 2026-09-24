@@ -314,6 +314,12 @@ public static class SellAdvisor
 
     private static string DescribeWhere(IEnumerable<OwnedStack> stacks)
         => string.Join(", ", stacks
-            .GroupBy(x => x.Source == StackSource.Retainer ? x.RetainerName ?? "Retainer" : x.Source.ToString())
+            .GroupBy(x => x.Source switch
+            {
+                StackSource.Retainer => x.RetainerName ?? "Retainer",
+                StackSource.Saddlebag => "Chocobo bag",
+                StackSource.Armory => "Armoury",
+                _ => x.Source.ToString(),
+            })
             .Select(g => $"{g.Key} {g.Sum(x => x.Quantity)}"));
 }
